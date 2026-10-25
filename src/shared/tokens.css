@@ -1,0 +1,51 @@
+/*
+  Design tokens. Owner: Muizz.
+
+  Every shared component reads these variables. When your team copies this file
+  into your product, change the VALUES to your own look. Never rename a variable,
+  or the components stop picking it up.
+
+  Default values all pass WCAG 2.2 AA contrast on --color-bg (#ffffff):
+  text 17.7:1, muted text 7.7:1, primary 6.7:1, danger 6.5:1, success 5.0:1,
+  warning 4.9:1, focus ring 5.2:1, input border 4.8:1.
+  If you change a colour, re-check it (4.5:1 for text, 3:1 for borders and focus).
+*/
+
+:root {
+  /* Surfaces */
+  --color-bg: #ffffff;
+  --color-surface: #f4f4f5;
+  --color-border: #d4d4d8;          /* decorative dividers, card edges */
+  --color-border-input: #71717a;    /* form control edges, must stay 3:1 or more */
+
+  /* Text */
+  --color-text: #18181b;
+  --color-text-muted: #52525b;
+
+  /* Roles: each filled colour has an "on" colour for text placed on top of it */
+  --color-primary: #1d4ed8;
+  --color-primary-hover: #1e40af;
+  --color-on-primary: #ffffff;
+
+  --color-danger: #b91c1c;
+  --color-danger-hover: #991b1b;
+  --color-on-danger: #ffffff;
+
+  --color-success: #15803d;
+  --color-on-success: #ffffff;
+
+  --color-warning: #a16207;
+  --color-on-warning: #ffffff;
+
+  /* Focus ring */
+  --color-focus: #2563eb;
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+
+  /* Shape */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+
+  /* Type: system fonts by default. Each team swaps in its own font here. */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
