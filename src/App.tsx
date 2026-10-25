@@ -1,122 +1,105 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import type { ReactNode } from "react";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router";
+import type { Role } from "./api/types";
+import { AuthProvider, useAuth } from "./auth/AuthContext";
+import Layout, { HomeRedirect, RequireRole } from "./components/Layout";
+import AvailabilityPage from "./pages/AvailabilityPage";
+import LoginPage from "./pages/LoginPage";
+import NewRequestPage from "./pages/NewRequestPage";
+import RecordUnitPage from "./pages/RecordUnitPage";
+import RequestDetailPage from "./pages/RequestDetailPage";
+import RequestsPage from "./pages/RequestsPage";
+import UnitsPage from "./pages/UnitsPage";
 
-function App() {
-  const [count, setCount] = useState(0)
+// Who can open each screen. The nav in Layout shows the same set.
+const ALL_STAFF: readonly Role[] = ["BANK_STAFF", "HOSPITAL_STAFF", "ADMIN"];
+const BANK_AND_ADMIN: readonly Role[] = ["BANK_STAFF", "ADMIN"];
+const BANK_ONLY: readonly Role[] = ["BANK_STAFF"];
+const HOSPITAL_ONLY: readonly Role[] = ["HOSPITAL_STAFF"];
 
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+// Signed out → /login. Wraps every route except /login.
+function RequireAuth({ children }: { children: ReactNode }) {
+  const { session } = useAuth();
+  if (!session) return <Navigate to="/login" replace />;
+  return <>{children}</>;
 }
 
-export default App
+function NotFoundPage() {
+  return (
+    <>
+      <h1 className="text-2xl font-semibold tracking-tight">Page not found</h1>
+      <p className="mt-2 text-(--color-text-muted)">Check the address, or use the links above.</p>
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+
+          <Route
+            element={
+              <RequireAuth>
+                <Layout />
+              </RequireAuth>
+            }
+          >
+            <Route index element={<HomeRedirect />} />
+            <Route
+              path="units"
+              element={
+                <RequireRole roles={BANK_AND_ADMIN}>
+                  <UnitsPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="units/new"
+              element={
+                <RequireRole roles={BANK_ONLY}>
+                  <RecordUnitPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="availability"
+              element={
+                <RequireRole roles={ALL_STAFF}>
+                  <AvailabilityPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="requests"
+              element={
+                <RequireRole roles={ALL_STAFF}>
+                  <RequestsPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="requests/new"
+              element={
+                <RequireRole roles={HOSPITAL_ONLY}>
+                  <NewRequestPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="requests/:requestId"
+              element={
+                <RequireRole roles={ALL_STAFF}>
+                  <RequestDetailPage />
+                </RequireRole>
+              }
+            />
+            <Route path="*" element={<NotFoundPage />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
+  );
+}
