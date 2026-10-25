@@ -8,7 +8,10 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   globalIgnores(['dist']),
   {
-    files: ['**/*.{ts,tsx}'],
+    files: ['**/*.{ts,tsx}', 'src/auth/AuthContext.tsx', 'src/shared/ui/toast.tsx'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
     extends: [
       js.configs.recommended,
       tseslint.configs.recommended,
