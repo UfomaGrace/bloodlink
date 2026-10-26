@@ -8,11 +8,10 @@
 //   both for the administrator) and links to /requests/:requestId.
 // - States: loading, error (+ Retry), empty (per role / no matches), list.
 // - Wide screens get a table; phones get stacked cards. Both read from the same data.
-// - "Hold ends" counts down to the soonest running hold, and turns to a warning under an hour
-//   (lib/holds HOLD_SOON_MS). When a hold passes, the row shows it lapsed straight away and the
-//   list reloads once, quietly: the rows stay on screen instead of the loading skeleton.
+// - When a hold passes, the row shows it lapsed straight away and the list reloads once, quietly:
+//   the rows stay on screen instead of the loading skeleton.
+// - No "Hold ends" column for now: the backend doesn't send hold end times yet.
 
-import { Clock } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { api } from "../api/endpoints";
@@ -23,9 +22,8 @@ import { UrgencyLabel } from "../components/UrgencyLabel";
 import { UrlFilterSelect } from "../components/UrlFilterSelect";
 import { useAsync, type AsyncResult } from "../hooks/useAsync";
 import { useHoldClock } from "../hooks/useHoldClock";
-import { HOLD_SOON_MS, nextHoldEnd, withPassedHolds } from "../lib/holds";
+import { withPassedHolds } from "../lib/holds";
 import {
-  durationLabel,
   formatDateTime,
   isKeyOf,
   REQUEST_STATE_LABELS,
@@ -269,8 +267,8 @@ function Results({
 
   return (
     <>
-      <RequestTable requests={items} role={role} now={now} />
-      <RequestCards requests={items} role={role} now={now} />
+      <RequestTable requests={items} role={role} />
+      <RequestCards requests={items} role={role} />
 
       <nav aria-label="Pagination" className="mt-6 flex flex-wrap items-center justify-between gap-3">
         <Button variant="secondary" className="min-h-11" disabled={data.page <= 0} onClick={() => onPage(data.page - 1)}>
@@ -296,34 +294,9 @@ function CreatedAgo({ createdAt }: { createdAt: string }) {
   return <time dateTime={createdAt}>{timeAgo(createdAt) || formatDateTime(createdAt)}</time>;
 }
 
-/** "in 1h 12m" to the soonest running hold; a warning with a clock under an hour; a dash with none. */
-function HoldEnds({ request, now }: { request: BloodRequest; now: number }) {
-  const end = nextHoldEnd(request.reservations, now);
-  if (end === null) {
-    return (
-      <span className="text-muted-foreground">
-        <span aria-hidden="true">—</span>
-        <span className="sr-only">No hold running</span>
-      </span>
-    );
-  }
-  const left = end - now;
-  const soon = left < HOLD_SOON_MS;
-  return (
-    <time
-      dateTime={new Date(end).toISOString()}
-      className={cn("inline-flex items-center gap-1 tabular-nums", soon && "font-medium text-warning")}
-    >
-      {soon && <Clock aria-hidden="true" className="size-3.5 shrink-0" />}
-      {soon && <span className="sr-only">Ends soon: </span>}
-      in {durationLabel(left)}
-    </time>
-  );
-}
-
 /** md and up. Emergency rows get a thin crimson rule on the left edge; the row itself stays white. */
-function RequestTable({ requests, role, now }: { requests: BloodRequest[]; role: Role | null; now: number }) {
-  const headings = ["Reference", otherPartyHeading(role), "Blood", "Urgency", "Needed by", "State", "Hold ends", "Created"];
+function RequestTable({ requests, role }: { requests: BloodRequest[]; role: Role | null }) {
+  const headings = ["Reference", otherPartyHeading(role), "Blood", "Urgency", "Needed by", "State", "Created"];
   return (
     <div className="hidden overflow-x-auto rounded-md border border-border bg-surface md:block">
       <table className="w-full text-left text-sm">
@@ -366,9 +339,6 @@ function RequestTable({ requests, role, now }: { requests: BloodRequest[]; role:
               <td className="px-4 py-3">
                 <RequestStateBadge state={request.state} />
               </td>
-              <td className="px-4 py-3 whitespace-nowrap">
-                <HoldEnds request={request} now={now} />
-              </td>
               <td className="px-4 py-3 whitespace-nowrap text-muted-foreground tabular-nums">
                 <CreatedAgo createdAt={request.createdAt} />
               </td>
@@ -381,7 +351,7 @@ function RequestTable({ requests, role, now }: { requests: BloodRequest[]; role:
 }
 
 /** Below md: one card per request; the heading is the link. Emergency cards get the same crimson left rule. */
-function RequestCards({ requests, role, now }: { requests: BloodRequest[]; role: Role | null; now: number }) {
+function RequestCards({ requests, role }: { requests: BloodRequest[]; role: Role | null }) {
   return (
     <ul className="flex flex-col gap-3 md:hidden">
       {requests.map((request) => (
@@ -409,14 +379,6 @@ function RequestCards({ requests, role, now }: { requests: BloodRequest[]; role:
             <dd><UrgencyLabel urgency={request.urgency} /></dd>
             <dt className="text-muted-foreground">Needed by</dt>
             <dd className="tabular-nums">{formatDateTime(request.neededBy)}</dd>
-            {nextHoldEnd(request.reservations, now) !== null && (
-              <>
-                <dt className="text-muted-foreground">Hold ends</dt>
-                <dd>
-                  <HoldEnds request={request} now={now} />
-                </dd>
-              </>
-            )}
             <dt className="text-muted-foreground">Created</dt>
             <dd className="text-muted-foreground tabular-nums">
               <CreatedAgo createdAt={request.createdAt} />
