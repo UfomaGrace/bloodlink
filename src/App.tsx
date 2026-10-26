@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import type { Role } from "./api/types";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
-import Layout, { HomeRedirect, RequireRole } from "./components/Layout";
+import Layout, { HomeRedirect, RequireRole } from "./components/layout/Layout";
 import AvailabilityPage from "./pages/AvailabilityPage";
 import LoginPage from "./pages/LoginPage";
 import NewRequestPage from "./pages/NewRequestPage";
@@ -28,7 +28,7 @@ function NotFoundPage() {
   return (
     <>
       <h1 className="text-2xl font-semibold tracking-tight">Page not found</h1>
-      <p className="mt-2 text-(--color-text-muted)">Check the address, or use the links above.</p>
+      <p className="mt-2 text-muted-foreground">Check the address, or use the links above.</p>
     </>
   );
 }

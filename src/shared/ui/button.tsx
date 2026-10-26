@@ -97,12 +97,11 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       onClick={handleClick}
       className={cn(
         "relative inline-flex items-center justify-center gap-2 font-medium",
-        "rounded-[var(--radius-md)] font-[family-name:var(--font-sans)]",
+        "rounded-md font-sans",
         "transition-colors",
         "focus-visible:[outline:var(--focus-ring-width)_solid_var(--color-focus)]",
-        "focus-visible:[outline-offset:var(--focus-ring-offset)]",
+        "focus-visible:outline-offset-(--focus-ring-offset)",
         "disabled:cursor-not-allowed disabled:opacity-50",
-        loading && "cursor-wait",
         variantClasses[variant],
         iconOnly ? iconOnlySizeClasses[size] : sizeClasses[size],
         className,

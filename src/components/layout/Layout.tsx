@@ -15,11 +15,11 @@
 import { Droplet } from "lucide-react";
 import { useRef, type MouseEvent, type ReactNode } from "react";
 import { Link, Navigate, NavLink, Outlet } from "react-router";
-import { IS_MOCK } from "../api/client";
-import type { Role } from "../api/types";
-import { useAuth } from "../auth/AuthContext";
-import { cn } from "../shared/cn";
-import { Button } from "../shared/ui/button";
+import { IS_MOCK } from "../../api/client";
+import type { Role } from "../../api/types";
+import { useAuth } from "../../auth/AuthContext";
+import { cn } from "../../shared/cn";
+import { Button } from "../../shared/ui/button";
 
 type NavItem = { to: string; label: string };
 
