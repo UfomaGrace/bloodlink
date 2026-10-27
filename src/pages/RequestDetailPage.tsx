@@ -27,6 +27,7 @@ import { applyApiError } from "../components/form/applyApiError";
 import { FormAlert } from "../components/form/FormAlert";
 import { FormikTextarea } from "../components/form/FormikTextarea";
 import { RequestStateBadge } from "../components/RequestStateBadge";
+import { UrgencyLabel } from "../components/UrgencyLabel";
 import { useAsync } from "../hooks/useAsync";
 import {
   bloodTypeLabel,
@@ -38,7 +39,6 @@ import {
   RESERVATION_STATUS_LABELS,
   RESERVATION_STATUS_TONES,
   timeAgo,
-  URGENCY_LABELS,
 } from "../lib/labels";
 import { DECLINE_REASON_MAX, declineReason } from "../lib/validation";
 import { cn } from "../shared/cn";
@@ -300,7 +300,7 @@ function RequestDetail({ requestId }: { requestId: string }) {
               { term: "Bank", value: request.bank.name },
               { term: "Blood", value: what },
               { term: "Quantity", value: unitsLabel(request.quantity) },
-              { term: "Urgency", value: URGENCY_LABELS[request.urgency] },
+              { term: "Urgency", value: <UrgencyLabel urgency={request.urgency} /> },
               { term: "Needed by", value: <time dateTime={request.neededBy}>{formatDateTime(request.neededBy)}</time> },
               {
                 term: "Created",
@@ -386,7 +386,7 @@ function ResultAlert({ notice }: { notice: Notice }) {
       role="alert"
       tabIndex={-1}
       className={cn(
-        "rounded-md border border-l-4 border-(--color-border) bg-(--color-bg) p-4 text-sm",
+        "rounded-md border border-l-4 border-(--color-border) bg-(--color-surface) p-4 text-sm",
         success ? "border-l-(--color-success)" : "border-l-(--color-danger)",
         focusRing,
       )}
@@ -431,7 +431,7 @@ function Reservations({ reservations }: { reservations: Reservation[] }) {
       <div className="mt-3 overflow-x-auto rounded-md border border-(--color-border)">
         <table className="w-full text-left text-sm">
           <caption className="sr-only">Units reserved for this request</caption>
-          <thead className="bg-(--color-surface)">
+          <thead className="bg-(--color-surface-sunken)">
             <tr>
               {["Unit", "Unit expires", "Status", "Hold"].map((heading) => (
                 <th key={heading} scope="col" className="px-4 py-3 font-semibold">

@@ -5,40 +5,66 @@
   into your product, change the VALUES to your own look. Never rename a variable,
   or the components stop picking it up.
 
-  Default values all pass WCAG 2.2 AA contrast on --color-bg (#ffffff):
-  text 17.7:1, muted text 7.7:1, primary 6.7:1, danger 6.5:1, success 5.0:1,
-  warning 4.9:1, focus ring 5.2:1, input border 4.8:1.
+  Values follow the approved BloodLink palette. Contrast (WCAG 2.2 AA):
+  on --color-surface (#ffffff): text 14.8:1, muted text 4.9:1, primary 5.5:1,
+  danger 6.6:1, success 7.1:1, warning 7.1:1, info 6.7:1, input border 4.9:1.
+  On --color-bg (#f5f8f8): muted text 4.6:1, primary / focus ring 5.1:1.
+  Status text on its own *-subtle tint stays at 5.7:1 or more.
+  --color-border (#cbd5d7) is 1.5:1, so it is for decorative dividers only;
+  form controls use --color-border-input.
   If you change a colour, re-check it (4.5:1 for text, 3:1 for borders and focus).
+
+  Hover shades and tints are mixed from the palette with color-mix(), so no
+  colour outside the palette is introduced.
 */
 
 :root {
   /* Surfaces */
-  --color-bg: #ffffff;
-  --color-surface: #f4f4f5;
-  --color-border: #d4d4d8;          /* decorative dividers, card edges */
-  --color-border-input: #71717a;    /* form control edges, must stay 3:1 or more */
+  --color-bg: #f5f8f8;              /* page background */
+  --color-surface: #ffffff;         /* cards, forms, tables, dialogs, inputs */
+  --color-surface-hover: color-mix(in srgb, var(--color-primary) 7%, var(--color-surface));
+  --color-surface-sunken: color-mix(in srgb, var(--color-secondary) 4%, var(--color-surface)); /* table headers, inset panels */
+  --color-border: #cbd5d7;          /* decorative dividers, card edges */
+  --color-border-input: #647477;    /* form control edges, must stay 3:1 or more */
 
   /* Text */
-  --color-text: #18181b;
-  --color-text-muted: #52525b;
+  --color-text: #182b2d;
+  --color-text-muted: #647477;
 
   /* Roles: each filled colour has an "on" colour for text placed on top of it */
-  --color-primary: #1d4ed8;
-  --color-primary-hover: #1e40af;
+  --color-primary: #0f766e;
+  --color-primary-hover: color-mix(in srgb, var(--color-primary) 82%, black);
   --color-on-primary: #ffffff;
 
-  --color-danger: #b91c1c;
-  --color-danger-hover: #991b1b;
+  /* Structure: the app header */
+  --color-secondary: #243746;
+  --color-on-secondary: #ffffff;
+  --color-on-secondary-muted: color-mix(in srgb, var(--color-on-secondary) 75%, var(--color-secondary)); /* 7.7:1 */
+  --color-secondary-hover: color-mix(in srgb, var(--color-on-secondary) 10%, var(--color-secondary));
+
+  /* Brand accent: crimson, used sparingly (logo, active nav, emergency urgency) */
+  --color-accent: #b9384d;
+
+  /* Status. Badges use the colour as text on its *-subtle tint. */
+  --color-danger: #b42318;
+  --color-danger-hover: color-mix(in srgb, var(--color-danger) 85%, black);
   --color-on-danger: #ffffff;
+  --color-danger-subtle: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface));
 
-  --color-success: #15803d;
+  --color-success: #166534;
   --color-on-success: #ffffff;
+  --color-success-subtle: color-mix(in srgb, var(--color-success) 8%, var(--color-surface));
 
-  --color-warning: #a16207;
+  --color-warning: #92400e;
   --color-on-warning: #ffffff;
+  --color-warning-subtle: color-mix(in srgb, var(--color-warning) 8%, var(--color-surface));
 
-  /* Focus ring */
-  --color-focus: #2563eb;
+  --color-info: #1d4ed8;
+  --color-on-info: #ffffff;
+  --color-info-subtle: color-mix(in srgb, var(--color-info) 8%, var(--color-surface));
+
+  /* Focus ring. Dark areas (the header) override this with --color-on-secondary. */
+  --color-focus: var(--color-primary);
   --focus-ring-width: 2px;
   --focus-ring-offset: 2px;
 

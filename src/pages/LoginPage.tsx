@@ -120,7 +120,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative isolate flex min-h-dvh flex-col overflow-hidden bg-(--color-bg) text-(--color-text) [--font-sans:Jost,system-ui,-apple-system,'Segoe_UI',Roboto,sans-serif] font-sans">
+    <div className="relative isolate flex min-h-dvh flex-col overflow-hidden bg-background text-foreground [--font-sans:Jost,system-ui,-apple-system,'Segoe_UI',Roboto,sans-serif] font-sans">
       {/* React 19 hoists these into <head>. Falls back to system fonts offline. */}
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
@@ -133,15 +133,15 @@ export default function LoginPage() {
       <CareBackground />
 
       <header className="mx-auto flex w-full max-w-6xl items-center px-4 pt-6 sm:px-8 sm:pt-8">
-        <p className="flex items-center gap-2 text-lg font-semibold tracking-wide text-(--color-primary)">
-          <Droplet aria-hidden="true" className="size-5" />
+        <p className="flex items-center gap-2 text-lg font-semibold tracking-wide text-primary">
+          <Droplet aria-hidden="true" className="size-5 fill-brand-accent text-brand-accent" />
           BLOODLINK
         </p>
       </header>
 
       <main className="mx-auto grid w-full max-w-6xl flex-1 items-center gap-10 px-4 py-10 sm:px-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,30rem)] lg:gap-16 lg:py-16">
         <section aria-labelledby="hero-heading" className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-(--color-primary) sm:text-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-primary sm:text-sm">
             Blood supply coordination
           </p>
           <h1
@@ -150,7 +150,7 @@ export default function LoginPage() {
           >
             Every unit, accounted for.
           </h1>
-          <p className="mt-5 max-w-xl text-base leading-relaxed text-(--color-text-muted) sm:text-lg">
+          <p className="mt-5 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
             Track blood stock and requests between banks and hospitals from one clear workspace.
           </p>
         </section>
@@ -160,7 +160,7 @@ export default function LoginPage() {
           <div className="p-2 sm:p-4">
             <CardHeader className="mb-6">
               <h2 className="text-3xl font-semibold tracking-tight">Welcome back</h2>
-              <p className="mt-3 text-base text-(--color-text-muted)">
+              <p className="mt-3 text-base text-muted-foreground">
                 Sign in to manage blood stock and requests.
               </p>
             </CardHeader>
@@ -169,7 +169,7 @@ export default function LoginPage() {
               {notice && !formError && (
                 <div
                   role="status"
-                  className="mb-5 rounded-md border border-(--color-border-input) border-l-4 border-l-(--color-primary) bg-(--color-bg) p-3 text-sm"
+                  className="mb-5 rounded-md border border-input border-l-4 border-l-primary bg-surface p-3 text-sm"
                 >
                   {notice}
                 </div>
@@ -180,13 +180,13 @@ export default function LoginPage() {
                   ref={alertRef}
                   role="alert"
                   tabIndex={-1}
-                  className="mb-5 rounded-md border border-(--color-danger) border-l-4 bg-(--color-bg] p-3 text-sm focus-visible:[outline:var(--focus-ring-width)_solid_var(--color-focus)] focus-visible:outline-offset-(--focus-ring-offset)"
+                  className="mb-5 rounded-md border border-error border-l-4 bg-surface p-3 text-sm focus-visible:[outline:var(--focus-ring-width)_solid_var(--color-focus)] focus-visible:outline-offset-(--focus-ring-offset)"
                 >
-                  <p className="font-medium text-(--color-danger)">
+                  <p className="font-medium text-error">
                     <span aria-hidden="true">! </span>
                     {formError.message}
                   </p>
-                  <p className="mt-1 break-all text-(--color-text-muted)">Reference: {formError.requestId}</p>
+                  <p className="mt-1 break-all text-muted-foreground">Reference: {formError.requestId}</p>
                 </div>
               )}
 
@@ -225,8 +225,8 @@ export default function LoginPage() {
                       />
 
                       {IS_MOCK && (
-                        <div className="rounded-md border border-dashed border-(--color-warning) bg-(--color-surface) p-3">
-                          <p className="mb-2 text-sm font-semibold text-(--color-text)">
+                        <div className="rounded-md border border-dashed border-warning bg-surface p-3">
+                          <p className="mb-2 text-sm font-semibold text-foreground">
                             Mock server only — simulated sign-in
                           </p>
                           <FormField label="Sign in as" hint="Not shown when connected to the real service.">
@@ -300,31 +300,27 @@ function CareBackground() {
       >
         <defs>
           <pattern id="bl-plus" width="56" height="56" patternUnits="userSpaceOnUse">
-            <path d="M28 22v12M22 28h12" stroke="#64748b" strokeWidth="1.5" strokeLinecap="round" />
+            <path d="M28 22v12M22 28h12" className="stroke-muted-foreground" strokeWidth="1.5" strokeLinecap="round" />
           </pattern>
+          {/* Mask luminance, not a visible colour: white keeps the pattern, transparent hides it. */}
           <radialGradient id="bl-fade" cx="30%" cy="35%" r="70%">
-            <stop offset="0%" stopColor="#fff" stopOpacity="1" />
-            <stop offset="100%" stopColor="#fff" stopOpacity="0" />
+            <stop offset="0%" stopColor="white" stopOpacity="1" />
+            <stop offset="100%" stopColor="white" stopOpacity="0" />
           </radialGradient>
           <mask id="bl-plus-mask">
             <rect width="1440" height="900" fill="url(#bl-fade)" />
           </mask>
         </defs>
 
-        {/* Soft shapes */}
-        <circle cx="140" cy="120" r="380" fill="#e11d48" opacity="0.045" />
-        <circle cx="1380" cy="860" r="420" fill="#0891b2" opacity="0.05" />
-        <circle cx="1180" cy="80" r="220" fill="#0d9488" opacity="0.04" />
-
         {/* Faint plus signs, fading out toward the card */}
-        <rect width="1440" height="900" fill="url(#bl-plus)" opacity="0.14" mask="url(#bl-plus-mask)" />
+        <rect width="1440" height="900" fill="url(#bl-plus)" opacity="0.12" mask="url(#bl-plus-mask)" />
 
         {/* Blood-drop outline */}
         <path
           d="M0 -150 C 50 -75 100 -25 100 38 A 100 100 0 0 1 -100 38 C -100 -25 -50 -75 0 -150 Z"
           transform="translate(1290 330)"
           fill="none"
-          stroke="#be123c"
+          className="stroke-brand-accent"
           strokeWidth="2"
           opacity="0.12"
         />
@@ -333,7 +329,7 @@ function CareBackground() {
         <path
           d="M0 780 H460 L490 780 L512 742 L540 830 L570 690 L598 800 L616 780 H900 L922 780 L938 760 L956 800 L972 780 H1440"
           fill="none"
-          stroke="#be123c"
+          className="stroke-brand-accent"
           strokeWidth="2"
           strokeLinejoin="round"
           strokeLinecap="round"

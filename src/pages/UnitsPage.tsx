@@ -287,7 +287,7 @@ function UnitTable({ units }: { units: Unit[] }) {
     <div className="hidden overflow-x-auto rounded-md border border-(--color-border) md:block">
       <table className="w-full text-left text-sm">
         <caption className="sr-only">Units, soonest expiry first</caption>
-        <thead className="bg-(--color-surface)">
+        <thead className="bg-(--color-surface-sunken)">
           <tr>
             {["Reference", "Blood type", "Component", "Collected", "Expires", "State"].map((heading) => (
               <th key={heading} scope="col" className="px-4 py-3 font-semibold">

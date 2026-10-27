@@ -69,7 +69,7 @@ export const REQUEST_STATE_LABELS: Record<RequestState, string> = {
 };
 
 export const REQUEST_STATE_TONES: Record<RequestState, StatusBadgeTone> = {
-  PENDING: "info",
+  PENDING: "warning",
   APPROVED: "success",
   DECLINED: "danger",
   CANCELLED: "neutral",
@@ -87,7 +87,7 @@ export const RESERVATION_STATUS_LABELS: Record<ReservationStatus, string> = {
 };
 
 export const RESERVATION_STATUS_TONES: Record<ReservationStatus, StatusBadgeTone> = {
-  ACTIVE: "info",
+  ACTIVE: "warning",
   LAPSED: "warning",
   ISSUED: "neutral",
   UNIT_EXPIRED: "danger",

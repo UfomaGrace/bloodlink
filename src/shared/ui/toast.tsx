@@ -7,7 +7,7 @@
 // Needs from teammates:
 // - ../../lib/cn.ts  -> cn(...classes)   (Muizz)
 // - tokens.css variables used: --color-surface, --color-text, --color-text-muted, --color-border,
-//                               --color-primary, --color-success, --color-danger, --color-focus, --radius
+//                               --color-info, --color-success, --color-danger, --color-focus, --radius
 //
 // Behaviour:
 // - success and info dismiss on their own after 5 seconds (change with `duration`, in ms)
@@ -74,7 +74,7 @@ const focusRing =
 const variantStyles: Record<ToastVariant, { accent: string; icon: string; word: string }> = {
   success: { accent: "border-l-[var(--color-success)]", icon: "text-[var(--color-success)]", word: "Success" },
   error: { accent: "border-l-[var(--color-danger)]", icon: "text-[var(--color-danger)]", word: "Error" },
-  info: { accent: "border-l-[var(--color-primary)]", icon: "text-[var(--color-primary)]", word: "Information" },
+  info: { accent: "border-l-[var(--color-info)]", icon: "text-[var(--color-info)]", word: "Information" },
 };
 
 function VariantIcon({ variant }: { variant: ToastVariant }) {
@@ -189,7 +189,7 @@ export function ToastProvider({ children, viewportClassName }: ToastProviderProp
               <ToastPrimitive.Close
                 aria-label="Dismiss notification"
                 className={cn(
-                  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius)] hover:bg-[var(--color-border)]",
+                  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius)] hover:bg-[var(--color-surface-hover)]",
                   focusRing,
                 )}
               >

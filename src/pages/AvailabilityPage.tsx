@@ -338,7 +338,7 @@ function AvailabilityTable({ rows, canRequest }: { rows: AvailabilityRow[]; canR
     <div className="hidden overflow-x-auto rounded-md border border-(--color-border) md:block">
       <table className="w-full text-left text-sm">
         <caption className="sr-only">Available units by bank, blood type and component</caption>
-        <thead className="bg-(--color-surface)">
+        <thead className="bg-(--color-surface-sunken)">
           <tr>
             {headings.map((heading) => (
               <th key={heading} scope="col" className="px-4 py-3 font-semibold">

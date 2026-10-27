@@ -108,7 +108,7 @@ const focusRing =
 // A Link that looks like the shared secondary Button, at least 44px tall.
 const secondaryLink = cn(
   "inline-flex min-h-11 items-center justify-center rounded-md px-4 text-sm font-medium",
-  "border border-(--color-border-input) bg-(--color-bg) text-(--color-text) hover:bg-(--color-surface)",
+  "border border-(--color-border-input) bg-(--color-surface) text-(--color-text) hover:bg-(--color-surface-hover)",
   focusRing,
 );
 

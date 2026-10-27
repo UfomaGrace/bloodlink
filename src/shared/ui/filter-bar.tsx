@@ -87,13 +87,13 @@ export const FilterBar = forwardRef<HTMLDivElement, FilterBarProps>(function Fil
 
       <div className="mt-3 flex min-h-10 flex-wrap items-center justify-between gap-x-4 gap-y-2">
         {/* Always rendered: a live region must exist before its text changes to be announced. */}
-        <p aria-live="polite" aria-atomic="true" className="text-sm text-muted">
+        <p aria-live="polite" aria-atomic="true" className="text-sm text-[var(--color-text-muted)]">
           {resultMessage}
         </p>
 
         {totalActive > 0 && (
           <div className="flex items-center gap-3">
-            <span className="text-sm text-muted">
+            <span className="text-sm text-[var(--color-text-muted)]">
               {totalActive} {totalActive === 1 ? "filter" : "filters"} active
             </span>
             <Button variant="ghost" onClick={clearAll}>
@@ -117,7 +117,7 @@ export type FilterGroupProps = {
 export function FilterGroup({ legend, children, className }: FilterGroupProps) {
   return (
     <fieldset className={cn("min-w-0", className)}>
-      <legend className="mb-1 text-sm font-medium text-text">{legend}</legend>
+      <legend className="mb-1 text-sm font-medium text-[var(--color-text)]">{legend}</legend>
       <div className="flex flex-col gap-2 sm:min-h-10 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4">
         {children}
       </div>

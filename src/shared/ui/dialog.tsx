@@ -94,7 +94,7 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(function Dia
             <DialogPrimitive.Close
               aria-label="Close"
               className={cn(
-                "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius)] text-[var(--color-text)] hover:bg-[var(--color-border)]",
+                "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]",
                 focusRing,
               )}
             >

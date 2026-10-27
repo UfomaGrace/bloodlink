@@ -42,11 +42,11 @@ const variantClasses: Record<Variant, string> = {
   primary:
     "bg-[var(--color-primary)] text-[var(--color-on-primary)] hover:bg-[var(--color-primary-hover)]",
   secondary:
-    "bg-[var(--color-bg)] text-[var(--color-text)] border border-[var(--color-border-input)] hover:bg-[var(--color-surface)]",
+    "bg-[var(--color-surface)] text-[var(--color-text)] border border-[var(--color-border-input)] hover:bg-[var(--color-surface-hover)]",
   danger:
     "bg-[var(--color-danger)] text-[var(--color-on-danger)] hover:bg-[var(--color-danger-hover)]",
   ghost:
-    "bg-transparent text-[var(--color-text)] hover:bg-[var(--color-surface)]",
+    "bg-transparent text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]",
 };
 
 // Smallest size is 32px tall, above the WCAG 2.2 minimum target of 24px.

@@ -29,8 +29,8 @@
 //   title always says in words that something went wrong.
 // - Centred. Long titles and descriptions wrap instead of overflowing.
 //
-// Text contrast with the default tokens: title 6.5:1, description 7.7:1 on
-// --color-bg (5.9:1 and 7.0:1 on --color-surface).
+// Text contrast with the default tokens: title 6.2:1, description 4.6:1 on
+// --color-bg (6.6:1 and 4.9:1 on --color-surface).
 
 import { forwardRef, type HTMLAttributes, type MouseEvent, type ReactNode } from "react";
 import { Button } from "./button";

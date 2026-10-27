@@ -36,6 +36,7 @@ import { applyApiError } from "../components/form/applyApiError";
 import { FormAlert } from "../components/form/FormAlert";
 import { FormikField } from "../components/form/FormikField";
 import { FormikSelect } from "../components/form/FormikSelect";
+import { UrgencyLabel } from "../components/UrgencyLabel";
 import { useAsync } from "../hooks/useAsync";
 import { useIdempotencyKey } from "../hooks/useIdempotencyKey";
 import {
@@ -167,7 +168,7 @@ const linkBase = cn("inline-flex min-h-11 items-center justify-center rounded-md
 const primaryLink = cn(linkBase, "bg-(--color-primary) text-(--color-on-primary) hover:bg-(--color-primary-hover)");
 const secondaryLink = cn(
   linkBase,
-  "border border-(--color-border-input) bg-(--color-bg) text-(--color-text) hover:bg-(--color-surface)",
+  "border border-(--color-border-input) bg-(--color-surface) text-(--color-text) hover:bg-(--color-surface-hover)",
 );
 
 export default function NewRequestPage() {
@@ -493,7 +494,7 @@ function RequestSummary({
         { term: "Bank", value: bankName },
         { term: "Blood", value: what },
         { term: "Quantity", value: unitsLabel(quantity) },
-        { term: "Urgency", value: URGENCY_LABELS[urgency] },
+        { term: "Urgency", value: <UrgencyLabel urgency={urgency} /> },
         { term: "Needed by", value: formatDateTime(neededBy) },
       ]}
     />

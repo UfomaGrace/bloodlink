@@ -14,6 +14,7 @@ import { api } from "../api/endpoints";
 import type { BloodRequest, BloodRequestPage, Role } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { RequestStateBadge } from "../components/RequestStateBadge";
+import { UrgencyLabel } from "../components/UrgencyLabel";
 import { UrlFilterSelect } from "../components/UrlFilterSelect";
 import { useAsync, type AsyncResult } from "../hooks/useAsync";
 import {
@@ -23,7 +24,6 @@ import {
   REQUEST_STATE_OPTIONS,
   requestItemLabel,
   timeAgo,
-  URGENCY_LABELS,
 } from "../lib/labels";
 import { cn } from "../shared/cn";
 import { Button } from "../shared/ui/button";
@@ -273,7 +273,7 @@ function RequestTable({ requests, role }: { requests: BloodRequest[]; role: Role
     <div className="hidden overflow-x-auto rounded-md border border-(--color-border) md:block">
       <table className="w-full text-left text-sm">
         <caption className="sr-only">Requests, newest first. Open a reference to see the request.</caption>
-        <thead className="bg-(--color-surface)">
+        <thead className="bg-(--color-surface-sunken)">
           <tr>
             {headings.map((heading) => (
               <th key={heading} scope="col" className="px-4 py-3 font-semibold">
@@ -294,7 +294,7 @@ function RequestTable({ requests, role }: { requests: BloodRequest[]; role: Role
               <td className="px-4 py-3 whitespace-nowrap">
                 {requestItemLabel(request.bloodGroup, request.rhesus, request.component, request.quantity)}
               </td>
-              <td className="px-4 py-3">{URGENCY_LABELS[request.urgency]}</td>
+              <td className="px-4 py-3"><UrgencyLabel urgency={request.urgency} /></td>
               <td className="px-4 py-3 whitespace-nowrap">{formatDateTime(request.neededBy)}</td>
               <td className="px-4 py-3">
                 <RequestStateBadge state={request.state} />
@@ -330,7 +330,7 @@ function RequestCards({ requests, role }: { requests: BloodRequest[]; role: Role
             <dt className="text-(--color-text-muted)">Blood</dt>
             <dd>{requestItemLabel(request.bloodGroup, request.rhesus, request.component, request.quantity)}</dd>
             <dt className="text-(--color-text-muted)">Urgency</dt>
-            <dd>{URGENCY_LABELS[request.urgency]}</dd>
+            <dd><UrgencyLabel urgency={request.urgency} /></dd>
             <dt className="text-(--color-text-muted)">Needed by</dt>
             <dd>{formatDateTime(request.neededBy)}</dd>
             <dt className="text-(--color-text-muted)">Created</dt>

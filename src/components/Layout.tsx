@@ -65,13 +65,13 @@ export default function Layout() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col bg-(--color-bg) font-sans text-(--color-text)">
+    <div className="flex min-h-dvh flex-col bg-background font-sans text-foreground">
       <a
         href="#main"
         onClick={skipToMain}
         className={cn(
           "sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50",
-          "focus:inline-flex focus:min-h-11 focus:items-center focus:rounded-md focus:bg-(--color-primary) focus:px-4",
+          "focus:inline-flex focus:min-h-11 focus:items-center focus:rounded-md focus:bg-primary focus:px-4",
           "focus:text-sm focus:font-medium focus:text-(--color-on-primary)",
           focusRing,
         )}
@@ -79,16 +79,17 @@ export default function Layout() {
         Skip to main content
       </a>
 
-      <header className="border-b border-(--color-border) bg-(--color-bg)">
+      {/* Dark header. Teal on slate is too faint for a focus ring, so it turns white in here. */}
+      <header className="bg-secondary text-(--color-on-secondary) [--color-focus:var(--color-on-secondary)]">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2 sm:px-8">
           <Link
             to="/"
             className={cn(
-              "flex min-h-11 shrink-0 items-center gap-2 rounded-sm text-lg font-semibold text-(--color-primary)",
+              "flex min-h-11 shrink-0 items-center gap-2 rounded-sm text-lg font-semibold tracking-tight",
               focusRing,
             )}
           >
-            <Droplet aria-hidden="true" className="size-5" />
+            <Droplet aria-hidden="true" className="size-5 fill-brand-accent text-brand-accent" />
             BloodLink
           </Link>
 
@@ -105,10 +106,11 @@ export default function Layout() {
                       end
                       className={({ isActive }) =>
                         cn(
-                          "inline-flex min-h-11 items-center whitespace-nowrap rounded-md px-3 text-sm font-medium transition-colors",
+                          // Active: white text on a lifted background, with a crimson underline as the brand touch.
+                          "inline-flex min-h-11 items-center whitespace-nowrap rounded-t-md border-b-2 px-3 text-sm font-medium transition-colors",
                           isActive
-                            ? "bg-(--color-primary) text-(--color-on-primary)"
-                            : "text-(--color-text) hover:bg-(--color-surface)",
+                            ? "border-brand-accent bg-(--color-secondary-hover) text-(--color-on-secondary)"
+                            : "border-transparent text-(--color-on-secondary-muted) hover:bg-(--color-secondary-hover) hover:text-(--color-on-secondary)",
                           focusRing,
                         )
                       }
@@ -124,10 +126,15 @@ export default function Layout() {
           <div className="ml-auto flex min-w-0 items-center gap-3">
             <p className="min-w-0 text-right text-sm leading-tight">
               <span className="block truncate font-medium">{user.displayName}</span>
-              <span className="block truncate text-(--color-text-muted)">{subtitle}</span>
+              <span className="block truncate text-(--color-on-secondary-muted)">{subtitle}</span>
             </p>
             {/* RequireAuth sees the cleared session and redirects to /login. */}
-            <Button variant="secondary" size="sm" className="min-h-11 shrink-0" onClick={() => signOut()}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="min-h-11 shrink-0 border border-(--color-on-secondary-muted) text-(--color-on-secondary) hover:bg-(--color-secondary-hover)"
+              onClick={() => signOut()}
+            >
               Sign out
             </Button>
           </div>
@@ -143,8 +150,8 @@ export default function Layout() {
         <Outlet />
       </main>
 
-      <footer className="border-t border-(--color-border)">
-        <p className="mx-auto w-full max-w-6xl px-4 py-4 text-sm text-(--color-text-muted) sm:px-8">
+      <footer className="border-t border--border">
+        <p className="mx-auto w-full max-w-6xl px-4 py-4 text-sm text-muted-foreground sm:px-8">
           Demonstration product. All data is fictional.
           {IS_MOCK && " Running against a mock server (simulated data)."}
         </p>
@@ -163,13 +170,13 @@ export function RequireRole({ roles, children }: { roles: readonly Role[]; child
       <h1 id="no-access-heading" className="text-2xl font-semibold tracking-tight">
         This page is not available for your role
       </h1>
-      <p className="max-w-prose text-(--color-text-muted)">
+      <p className="max-w-prose text-muted-foreground">
         Your account can't open this page. Head back to your start page to carry on.
       </p>
       <Link
         to="/"
         className={cn(
-          "mt-2 inline-flex min-h-11 items-center rounded-md bg-(--color-primary) px-4 text-sm font-medium",
+          "mt-2 inline-flex min-h-11 items-center rounded-md bg-primary px-4 text-sm font-medium",
           "text-(--color-on-primary) hover:bg-(--color-primary-hover)",
           focusRing,
         )}

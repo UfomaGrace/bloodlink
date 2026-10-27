@@ -1,2 +1,28 @@
 @import "tailwindcss";
 @import './shared/tokens.css';
+
+/*
+  Palette names as Tailwind utilities (bg-primary, text-muted-foreground, border-border…).
+  Values live in tokens.css; `inline` makes each utility read the token directly, so
+  changing a value there updates both the var(--color-*) classes and these.
+*/
+@theme inline {
+  --color-primary: var(--color-primary);
+  --color-brand-accent: var(--color-accent);
+  --color-secondary: var(--color-secondary);
+  --color-background: var(--color-bg);
+  --color-surface: var(--color-surface);
+  --color-foreground: var(--color-text);
+  --color-muted-foreground: var(--color-text-muted);
+  --color-border: var(--color-border);
+  --color-input: var(--color-border-input);
+  --color-success: var(--color-success);
+  --color-warning: var(--color-warning);
+  --color-error: var(--color-danger);
+  --color-info: var(--color-info);
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+}
