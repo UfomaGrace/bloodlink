@@ -108,7 +108,7 @@ export default function RequestsPage() {
           </Link>
         )}
       </div>
-      <p className="mt-2 text-(--color-text-muted)">Newest first.</p>
+      <p className="mt-2 text-muted-foreground">Newest first.</p>
 
       <section aria-labelledby="request-filters-heading" className="mt-6">
         <h2 id="request-filters-heading" className="sr-only">
@@ -119,7 +119,7 @@ export default function RequestsPage() {
         </div>
         <div className="mt-3 flex min-h-11 flex-wrap items-center justify-between gap-x-4 gap-y-2">
           {/* Always rendered: a live region must exist before its text changes to be announced. */}
-          <p aria-live="polite" aria-atomic="true" className="text-sm text-(--color-text-muted)">
+          <p aria-live="polite" aria-atomic="true" className="text-sm text-muted-foreground">
             {requests.data && !requests.loading ? showingMessage(requests.data) : ""}
           </p>
           {state && (
@@ -246,7 +246,7 @@ function Results({
         <Button variant="secondary" className="min-h-11" disabled={data.page <= 0} onClick={() => onPage(data.page - 1)}>
           Previous
         </Button>
-        <p className="text-sm text-(--color-text-muted)">
+        <p className="text-sm text-muted-foreground">
           Page {data.page + 1} of {lastPage + 1}
         </p>
         <Button
@@ -266,26 +266,36 @@ function CreatedAgo({ createdAt }: { createdAt: string }) {
   return <time dateTime={createdAt}>{timeAgo(createdAt) || formatDateTime(createdAt)}</time>;
 }
 
-/** md and up. */
+/** md and up. Emergency rows get a thin crimson rule on the left edge; the row itself stays white. */
 function RequestTable({ requests, role }: { requests: BloodRequest[]; role: Role | null }) {
   const headings = ["Reference", otherPartyHeading(role), "Blood", "Urgency", "Needed by", "State", "Created"];
   return (
-    <div className="hidden overflow-x-auto rounded-md border border-(--color-border) md:block">
+    <div className="hidden overflow-x-auto rounded-md border border-border bg-surface md:block">
       <table className="w-full text-left text-sm">
         <caption className="sr-only">Requests, newest first. Open a reference to see the request.</caption>
-        <thead className="bg-(--color-surface-sunken)">
+        <thead className="border-b border-border bg-(--color-surface-sunken)">
           <tr>
             {headings.map((heading) => (
-              <th key={heading} scope="col" className="px-4 py-3 font-semibold">
+              <th
+                key={heading}
+                scope="col"
+                // The first column carries the same 2px left edge as the rows, so headings line up.
+                className="px-4 py-2.5 text-xs font-semibold text-muted-foreground first:border-l-2 first:border-l-transparent"
+              >
                 {heading}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody>
+        <tbody className="divide-y divide-border">
           {requests.map((request) => (
-            <tr key={request.id} className="border-t border-(--color-border)">
-              <td className="px-4 py-1">
+            <tr key={request.id} className="transition-colors hover:bg-(--color-surface-sunken)">
+              <td
+                className={cn(
+                  "border-l-2 px-4 py-1",
+                  request.urgency === "EMERGENCY" ? "border-l-brand-accent" : "border-l-transparent",
+                )}
+              >
                 <Link to={detailPath(request)} className={rowLink}>
                   {request.reference}
                 </Link>
@@ -294,12 +304,14 @@ function RequestTable({ requests, role }: { requests: BloodRequest[]; role: Role
               <td className="px-4 py-3 whitespace-nowrap">
                 {requestItemLabel(request.bloodGroup, request.rhesus, request.component, request.quantity)}
               </td>
-              <td className="px-4 py-3"><UrgencyLabel urgency={request.urgency} /></td>
-              <td className="px-4 py-3 whitespace-nowrap">{formatDateTime(request.neededBy)}</td>
+              <td className="px-4 py-3 whitespace-nowrap">
+                <UrgencyLabel urgency={request.urgency} />
+              </td>
+              <td className="px-4 py-3 whitespace-nowrap tabular-nums">{formatDateTime(request.neededBy)}</td>
               <td className="px-4 py-3">
                 <RequestStateBadge state={request.state} />
               </td>
-              <td className="px-4 py-3 whitespace-nowrap">
+              <td className="px-4 py-3 whitespace-nowrap text-muted-foreground tabular-nums">
                 <CreatedAgo createdAt={request.createdAt} />
               </td>
             </tr>
@@ -310,31 +322,37 @@ function RequestTable({ requests, role }: { requests: BloodRequest[]; role: Role
   );
 }
 
-/** Below md: one card per request; the heading is the link. */
+/** Below md: one card per request; the heading is the link. Emergency cards get the same crimson left rule. */
 function RequestCards({ requests, role }: { requests: BloodRequest[]; role: Role | null }) {
   return (
     <ul className="flex flex-col gap-3 md:hidden">
       {requests.map((request) => (
-        <li key={request.id} className="rounded-md border border-(--color-border) bg-(--color-surface) p-4">
+        <li
+          key={request.id}
+          className={cn(
+            "rounded-md border border-border bg-surface p-4",
+            request.urgency === "EMERGENCY" && "border-l-2 border-l-brand-accent",
+          )}
+        >
           <div className="flex items-start justify-between gap-3">
             <h3 className="min-w-0">
               <Link to={detailPath(request)} className={rowLink}>
                 {request.reference}
               </Link>
             </h3>
-            <RequestStateBadge state={request.state} className="mt-3" />
+            <RequestStateBadge state={request.state} className="mt-3 text-sm" />
           </div>
-          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-            <dt className="text-(--color-text-muted)">{otherPartyHeading(role)}</dt>
+          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+            <dt className="text-muted-foreground">{otherPartyHeading(role)}</dt>
             <dd className="min-w-0 wrap-break-word">{otherParty(role, request)}</dd>
-            <dt className="text-(--color-text-muted)">Blood</dt>
+            <dt className="text-muted-foreground">Blood</dt>
             <dd>{requestItemLabel(request.bloodGroup, request.rhesus, request.component, request.quantity)}</dd>
-            <dt className="text-(--color-text-muted)">Urgency</dt>
+            <dt className="text-muted-foreground">Urgency</dt>
             <dd><UrgencyLabel urgency={request.urgency} /></dd>
-            <dt className="text-(--color-text-muted)">Needed by</dt>
-            <dd>{formatDateTime(request.neededBy)}</dd>
-            <dt className="text-(--color-text-muted)">Created</dt>
-            <dd>
+            <dt className="text-muted-foreground">Needed by</dt>
+            <dd className="tabular-nums">{formatDateTime(request.neededBy)}</dd>
+            <dt className="text-muted-foreground">Created</dt>
+            <dd className="text-muted-foreground tabular-nums">
               <CreatedAgo createdAt={request.createdAt} />
             </dd>
           </dl>

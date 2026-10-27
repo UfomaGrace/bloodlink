@@ -45,6 +45,9 @@
   /* Brand accent: crimson, used sparingly (logo, active nav, emergency urgency) */
   --color-accent: #b9384d;
 
+  /* Urgent urgency dot. 3.6:1 on surface: fine for a graphic (3:1), too light for text. */
+  --color-caution: #b77928;
+
   /* Status. Badges use the colour as text on its *-subtle tint. */
   --color-danger: #b42318;
   --color-danger-hover: color-mix(in srgb, var(--color-danger) 85%, black);

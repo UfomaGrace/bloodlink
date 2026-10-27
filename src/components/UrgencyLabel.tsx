@@ -1,12 +1,13 @@
-// UrgencyLabel: a request's urgency as text.
+// UrgencyLabel: a request's urgency as text with a small coloured dot.
 //
 //   <UrgencyLabel urgency={request.urgency} />
 //
-// - Routine and urgent read as plain text. Emergency gets the crimson brand accent and a
-//   small drop mark, so it stands out in a list without borrowing the red error colour.
-// - The word is always written out; the colour and mark are extras (decorative, hidden).
+// - Emergency: crimson dot and crimson, semibold text, so it stands out in a list without
+//   colouring the row or borrowing the red error colour.
+// - Urgent: amber dot, normal text (the amber is too light to read as text).
+// - Routine: slate dot, muted text, so it stays in the background.
+// - The word is always written out; the dot is extra (decorative, hidden).
 
-import { Droplet } from "lucide-react";
 import type { Urgency } from "../api/types";
 import { URGENCY_LABELS } from "../lib/labels";
 import { cn } from "../shared/cn";
@@ -16,12 +17,22 @@ export type UrgencyLabelProps = {
   className?: string;
 };
 
-export function UrgencyLabel({ urgency, className }: UrgencyLabelProps) {
-  if (urgency !== "EMERGENCY") return <span className={className}>{URGENCY_LABELS[urgency]}</span>;
+const dotClasses: Record<Urgency, string> = {
+  EMERGENCY: "bg-(--color-accent)",
+  URGENT: "bg-(--color-caution)",
+  ROUTINE: "bg-(--color-text-muted)",
+};
 
+const textClasses: Record<Urgency, string> = {
+  EMERGENCY: "font-semibold text-(--color-accent)",
+  URGENT: "text-(--color-text)",
+  ROUTINE: "text-(--color-text-muted)",
+};
+
+export function UrgencyLabel({ urgency, className }: UrgencyLabelProps) {
   return (
-    <span className={cn("inline-flex items-center gap-1 font-semibold text-(--color-accent)", className)}>
-      <Droplet aria-hidden="true" className="size-3.5 shrink-0 fill-current" />
+    <span className={cn("inline-flex items-center gap-2", textClasses[urgency], className)}>
+      <span aria-hidden="true" className={cn("size-2 shrink-0 rounded-full", dotClasses[urgency])} />
       {URGENCY_LABELS[urgency]}
     </span>
   );

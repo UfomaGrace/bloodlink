@@ -28,6 +28,8 @@ export type FieldControlProps = {
 export type FormFieldProps = {
   label: string;
   hint?: string;
+  /** "below" puts the hint under the control, e.g. to keep side-by-side inputs aligned. */
+  hintPlacement?: "above" | "below";
   error?: string;
   required?: boolean;
   /** Pass your own id if the control needs a stable one; otherwise one is generated. */
@@ -39,6 +41,7 @@ export type FormFieldProps = {
 export function FormField({
   label,
   hint,
+  hintPlacement = "above",
   error,
   required = false,
   id,
@@ -61,28 +64,32 @@ export function FormField({
     ...(required && { "aria-required": true as const }),
   };
 
+  const hintText = (
+    <p id={hintId} className="text-sm text-muted-foreground">
+      {hint}
+    </p>
+  );
+
   return (
-    <div className={cn("flex flex-col gap-1.5 font-[family-name:var(--font-sans)]", className)}>
-      <label htmlFor={controlId} className="text-sm font-medium text-[var(--color-text)]">
+    <div className={cn("flex flex-col gap-1.5 font-sans", className)}>
+      <label htmlFor={controlId} className="text-sm font-medium text-muted-foreground">
         {label}
         {required && (
-          <span aria-hidden="true" className="ml-0.5 text-[var(--color-danger)]">
+          <span aria-hidden="true" className="ml-0.5 text-error">
             *
           </span>
         )}
       </label>
 
-      {hint && (
-        <p id={hintId} className="text-sm text-[var(--color-text-muted)]">
-          {hint}
-        </p>
-      )}
+      {hint && hintPlacement === "above" && hintText}
 
       {children(field)}
 
+      {hint && hintPlacement === "below" && hintText}
+
       {/* Error is text with an icon-like prefix, never colour alone. */}
       {error && (
-        <p id={errorId} className="text-sm font-medium text-[var(--color-danger)]">
+        <p id={errorId} className="text-sm font-medium text-error">
           <span aria-hidden="true">! </span>
           {error}
         </p>

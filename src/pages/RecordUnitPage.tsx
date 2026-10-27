@@ -245,6 +245,7 @@ export default function RecordUnitPage() {
                       name="expiryDate"
                       label="Expiry date"
                       hint="The last day the unit can be used."
+                      hintPlacement="below"
                       type="date"
                       min={values.collectionDate || undefined}
                       required

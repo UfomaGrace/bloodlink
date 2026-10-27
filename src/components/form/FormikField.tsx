@@ -33,6 +33,7 @@ type CommonProps = {
   name: string;
   label: string;
   hint?: string;
+  hintPlacement?: "above" | "below";
   required?: boolean;
   className?: string;
 };
@@ -74,7 +75,7 @@ const textareaClasses = cn(
 );
 
 export function FormikField(props: FormikFieldProps) {
-  const { name, label, hint, required, className, ...variant } = props;
+  const { name, label, hint, hintPlacement, required, className, ...variant } = props;
   const [field, meta, helpers] = useField<string>(name);
   const error = meta.touched && meta.error ? meta.error : undefined;
 
@@ -135,6 +136,7 @@ export function FormikField(props: FormikFieldProps) {
     <FormField
       label={label}
       hint={hint}
+      hintPlacement={hintPlacement}
       error={error}
       required={required}
       className={className}
