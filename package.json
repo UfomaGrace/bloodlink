@@ -13,6 +13,7 @@
     "contract:sync": "node scripts/sync-contract.mjs",
     "contract:check": "node scripts/sync-contract.mjs --check",
     "contract:types": "openapi-typescript contract/openapi.yaml -o src/api/schema.d.ts",
+       "service:status": "node scripts/service-status.mjs",
     "mock": "prism mock contract/openapi.yaml --port 4010 --host 0.0.0.0"
   },
   "contract": {
