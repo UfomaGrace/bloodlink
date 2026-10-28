@@ -84,6 +84,7 @@ export const RESERVATION_STATUS_LABELS: Record<ReservationStatus, string> = {
   ISSUED: "Issued",
   UNIT_EXPIRED: "Unit expired",
   RELEASED: "Released",
+   REVERSED: "Reversed",
 };
 
 export const RESERVATION_STATUS_TONES: Record<ReservationStatus, StatusBadgeTone> = {
@@ -92,6 +93,7 @@ export const RESERVATION_STATUS_TONES: Record<ReservationStatus, StatusBadgeTone
   ISSUED: "neutral",
   UNIT_EXPIRED: "danger",
   RELEASED: "neutral",
+   REVERSED: "neutral",
 };
 
 // HistoryEntry.event is a free string in the contract (max 40 chars), so this map lists the
