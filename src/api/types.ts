@@ -31,6 +31,25 @@ export type Reservation = S['Reservation'];
 export type HistoryEntry = S['HistoryEntry'];
 export type BloodRequest = S['BloodRequest'];
 export type BloodRequestPage = S['BloodRequestPage'];
+export type Health = S['Health'];
+export type UnitSummary = S['UnitSummary'];
+export type UnitDetail = S['UnitDetail'];
+export type IssueReversal = S['IssueReversal'];
+export type Cancellation = S['Cancellation'];
+export type HoldRelease = S['HoldRelease'];
+export type DonationSlotCreate = S['DonationSlotCreate'];
+export type DonationSlot = S['DonationSlot'];
+export type DonationSlotList = S['DonationSlotList'];
+export type BookingStatus = S['BookingStatus'];
+export type Booking = S['Booking'];
+export type DonorSummary = S['DonorSummary'];
+export type BookingPage = S['BookingPage'];
+export type Attendance = S['Attendance'];
+export type Dashboard = S['Dashboard'];
+export type GroupCount = S['GroupCount'];
+export type OpenRequestCounts = S['OpenRequestCounts'];
+export type HoldEndingSoon = S['HoldEndingSoon'];
+export type ActivityEntry = S['ActivityEntry'];
 
 /** The user's bank or hospital (null for donors and the administrator). */
 export function userOrganisation(user: User): Organisation | null {
@@ -65,4 +84,22 @@ export type RequestQuery = {
 export type OrganisationQuery = {
   type?: OrganisationType;
   area?: string;
+};
+
+export type DonationSlotQuery = {
+  bankId?: string;
+  /** First day, YYYY-MM-DD. Default today. */
+  from?: string;
+  /** Last day, YYYY-MM-DD. Default 14 days after `from`, at most 31. */
+  to?: string;
+};
+
+export type BookingQuery = {
+  status?: BookingStatus;
+  page?: number;
+  size?: number;
+};
+
+export type DashboardQuery = {
+  bankId?: string;
 };
