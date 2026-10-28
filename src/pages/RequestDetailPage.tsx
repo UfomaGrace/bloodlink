@@ -6,6 +6,15 @@
 //     Approve → ConfirmDialog → POST /requests/{id}/approval (all or nothing).
 //     Decline → dialog with a reason (lib/validation declineReason) → POST /requests/{id}/declination.
 //   Success shows the request the service sent back, plus a success alert.
+// - The same people see "Record as issued" while the request is APPROVED with every hold running
+//   and no unit past its expiry date (canIssue). ConfirmDialog lists the unit references →
+//   POST /requests/{id}/issue. 409 REQUEST_NOT_APPROVED (the hold lapsed, or it was already
+//   issued) shows the message and reloads.
+// - While an action is in flight, the status line under the heading says so ("Recording issue…"),
+//   because the busy button only shows a spinner.
+// - Issue is not idempotent and takes no Idempotency-Key yet. On TIMEOUT or NETWORK_ERROR we
+//   neither say "failed" nor retry: we reload, then say what the request shows now
+//   ("We couldn't confirm. The request now shows as Fulfilled.").
 // - 409 (UNITS_NO_LONGER_AVAILABLE, REQUEST_NOT_PENDING), 404 or a lost connection: the alert
 //   shows the service's message, the dialog closes and the request is loaded again. After a 409
 //   our copy is out of date (someone else decided it, or the units went), and after a lost
@@ -51,7 +60,14 @@ import {
   RESERVATION_STATUS_TONES,
   timeAgo,
 } from "../lib/labels";
-import { actsForBank, canDecide, viewerOf } from "../lib/requestActions";
+import {
+  actsForBank,
+  canDecide,
+  canIssue,
+  issuedUnitReferences,
+  unconfirmedMessage,
+  viewerOf,
+} from "../lib/requestActions";
 import { DECLINE_REASON_MAX, declineReason } from "../lib/validation";
 import { cn } from "../shared/cn";
 import { Button } from "../shared/ui/button";
@@ -101,6 +117,12 @@ function approvedMessage(request: BloodRequest): string {
   return holdEnd ? `Approved. Units reserved until ${holdTimeLabel(holdEnd)}.` : "Approved. Units reserved.";
 }
 
+function issuedMessage(unitReferences: readonly string[]): string {
+  return unitReferences.length > 0
+    ? `Recorded as issued: ${unitReferences.join(", ")}.`
+    : "Recorded as issued.";
+}
+
 export default function RequestDetailPage() {
   const { requestId = "" } = useParams();
   // A new id starts with fresh state: no leftover alert, override or open dialog.
@@ -123,12 +145,23 @@ function RequestDetail({ requestId }: { requestId: string }) {
   const [declineOpen, setDeclineOpen] = useState(false);
   const [declining, setDeclining] = useState(false);
   const [declineIssues, setDeclineIssues] = useState<{ error: ApiError; issues: FieldIssue[] } | null>(null);
+  const [issueOpen, setIssueOpen] = useState(false);
+  // What is in flight, for the status line ("Recording issue…"). Null when nothing is.
+  const [inFlight, setInFlight] = useState<string | null>(null);
+  // Set after a lost connection: the copy we had when the reload started.
+  const [unconfirmed, setUnconfirmed] = useState<{ from: BloodRequest | null } | null>(null);
 
   const fetched = updated && updated.over === loaded.data ? updated.request : loaded.data;
   const now = useHoldClock(fetched?.reservations ?? [], loaded.reload);
   const current = fetched && withPassedHolds(fetched, now);
   const request: BloodRequest | null =
     current && IS_MOCK && simulatePending ? { ...current, state: "PENDING" } : current;
+
+  // After a lost connection, once the reload has answered, say what the request shows now.
+  if (unconfirmed && !loaded.loading && (loaded.data !== unconfirmed.from || loaded.error)) {
+    setUnconfirmed(null);
+    setNotice({ tone: "info", message: unconfirmedMessage(loaded.error ? null : (current?.state ?? null)) });
+  }
 
   function succeeded(next: BloodRequest, message: string) {
     setUpdated(next);
@@ -143,6 +176,32 @@ function RequestDetail({ requestId }: { requestId: string }) {
     if (error.status === 409 || error.status === 404 || error.isConnectionProblem) {
       setUpdated(null);
       loaded.reload();
+    }
+  }
+
+  /** A lost connection: we can't tell whether it happened. No "failed", no retry: reload and report. */
+  function checkAfterLostConnection() {
+    setSimulatePending(false);
+    setNotice(null);
+    setUpdated(null);
+    setUnconfirmed({ from: loaded.data });
+    loaded.reload();
+  }
+
+  // Resolves either way, so ConfirmDialog never stays open; we close it ourselves in the same update.
+  async function issue(unitReferences: readonly string[]) {
+    setInFlight("Recording issue…");
+    try {
+      const res = await api.issueRequest(requestId);
+      setIssueOpen(false);
+      succeeded(res.data, issuedMessage(unitReferences));
+    } catch (e) {
+      setIssueOpen(false);
+      const error = toApiError(e);
+      if (error.isConnectionProblem) checkAfterLostConnection();
+      else failed(error);
+    } finally {
+      setInFlight(null);
     }
   }
 
@@ -233,6 +292,11 @@ function RequestDetail({ requestId }: { requestId: string }) {
   }
 
   const what = whatLabel(request);
+  const unitReferences = issuedUnitReferences(request);
+  const busy = loaded.loading || inFlight !== null;
+  const statusLine =
+    inFlight ??
+    (unconfirmed ? "We couldn't confirm. Checking the latest state…" : loaded.loading ? "Checking the latest state…" : "");
 
   return (
     <>
@@ -243,9 +307,9 @@ function RequestDetail({ requestId }: { requestId: string }) {
         <h1 className="min-w-0 text-2xl font-semibold tracking-tight wrap-break-word">Request {request.reference}</h1>
         <RequestStateBadge state={request.state} />
       </div>
-      {/* Shown while the request reloads after an error, so nobody acts on the old state. */}
+      {/* What is in flight, or that the request is reloading, so nobody acts on the old state. */}
       <p role="status" className="mt-1 min-h-5 text-sm text-muted-foreground">
-        {loaded.loading ? "Checking the latest state…" : ""}
+        {statusLine}
       </p>
 
       {alert && <div className="mt-4">{alert}</div>}
@@ -285,16 +349,33 @@ function RequestDetail({ requestId }: { requestId: string }) {
             Approving reserves {unitsLabel(request.quantity)} of {what} for {request.hospital.name}.
           </p>
           <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-            <Button className="min-h-11" disabled={loaded.loading} onClick={() => setApproveOpen(true)}>
+            <Button className="min-h-11" disabled={busy} onClick={() => setApproveOpen(true)}>
               Approve
             </Button>
             <Button
               variant="secondary"
               className="min-h-11"
-              disabled={loaded.loading}
+              disabled={busy}
               onClick={() => changeDeclineOpen(true)}
             >
               Decline
+            </Button>
+          </div>
+        </section>
+      )}
+
+      {canIssue(request, viewer, now) && (
+        <section aria-labelledby="issue-heading" className="mt-6 rounded-md border border-border bg-surface p-4">
+          <h2 id="issue-heading" className="text-lg font-semibold">
+            Issue
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            When the units leave the bank for {request.hospital.name}, record them as issued. The request is then
+            fulfilled.
+          </p>
+          <div className="mt-4">
+            <Button className="min-h-11" disabled={busy} onClick={() => setIssueOpen(true)}>
+              Record as issued
             </Button>
           </div>
         </section>
@@ -343,6 +424,26 @@ function RequestDetail({ requestId }: { requestId: string }) {
         confirmLabel="Approve and reserve"
         onConfirm={approve}
       />
+
+      <ConfirmDialog
+        open={issueOpen}
+        onOpenChange={setIssueOpen}
+        title="Record these units as issued?"
+        description={`Only once they have left the bank for ${request.hospital.name}. The request becomes fulfilled.`}
+        confirmLabel="Record as issued"
+        onConfirm={() => issue(unitReferences)}
+      >
+        <p id="issue-units-heading" className="font-medium">
+          {unitReferences.length === 1 ? "Unit being issued" : `${unitReferences.length} units being issued`}
+        </p>
+        <ul aria-labelledby="issue-units-heading" className="mt-2 list-disc pl-5">
+          {unitReferences.map((reference) => (
+            <li key={reference} className="wrap-break-word">
+              {reference}
+            </li>
+          ))}
+        </ul>
+      </ConfirmDialog>
 
       <Dialog
         open={declineOpen}
