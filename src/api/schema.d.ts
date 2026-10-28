@@ -211,6 +211,295 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/units/{unitId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                unitId: components["parameters"]["UnitIdPath"];
+            };
+            cookie?: never;
+        };
+        /**
+         * One unit with its full history
+         * @description Staff of the bank that holds the unit, or the administrator. Staff of another bank receive 404, so the
+         *     existence of other banks' units is not revealed. Hospital staff and donors receive 403.
+         *     `state` is computed at read time, like the list. The history is oldest first and never edited: an issue
+         *     and its reversal both stay visible.
+         */
+        get: operations["getUnit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/requests/{requestId}/issue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the blood request (not the X-Request-Id header). */
+                requestId: components["parameters"]["RequestIdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record the reserved units as issued (handed to the hospital)
+         * @description Staff of the addressed bank, or the administrator. Allowed only while the request is APPROVED: every hold
+         *     still running and no reserved unit past its expiry date. In one transaction every reserved unit becomes
+         *     ISSUED, every reservation ISSUED, and the request FULFILLED. All or nothing.
+         *
+         *     An expired unit can never be issued. A request whose hold has lapsed, or whose unit expired while
+         *     reserved, is no longer APPROVED, so the call is refused with 409 `REQUEST_NOT_APPROVED`.
+         *
+         *     Not idempotent: issuing a request that is already FULFILLED returns 409 `REQUEST_NOT_APPROVED`.
+         */
+        post: operations["issueRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/requests/{requestId}/issue/reversal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the blood request (not the X-Request-Id header). */
+                requestId: components["parameters"]["RequestIdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reverse an issue that was recorded in error
+         * @description Staff of the addressed bank, or the administrator. Allowed only when the request is FULFILLED.
+         *     In one transaction:
+         *     - each issued unit returns to AVAILABLE **only if it has not expired**; a unit past its expiry date
+         *       becomes EXPIRED instead;
+         *     - each reservation becomes REVERSED;
+         *     - the request goes back to PENDING, so it is not lost and the bank can approve it again.
+         *
+         *     Nothing is deleted: the unit's and the request's history keep both the ISSUED entry and the
+         *     ISSUE_REVERSED entry, with the reason. Not idempotent: a second reversal returns 409.
+         */
+        post: operations["reverseIssue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/requests/{requestId}/cancellation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the blood request (not the X-Request-Id header). */
+                requestId: components["parameters"]["RequestIdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The requesting hospital withdraws its own request
+         * @description **Only staff of the hospital that made the request.** Other hospitals receive 404; bank staff, donors and
+         *     the administrator receive 403. Allowed while the request is PENDING or APPROVED. Cancelling an APPROVED
+         *     request releases its holds in the same transaction: each reservation becomes RELEASED and each unit
+         *     returns to AVAILABLE. The request becomes CANCELLED. Not idempotent: a second cancellation returns 409.
+         */
+        post: operations["cancelRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/requests/{requestId}/hold-release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the blood request (not the X-Request-Id header). */
+                requestId: components["parameters"]["RequestIdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release a routine request's hold so an emergency request can have its units (ADR-002)
+         * @description Staff of the bank holding the units, or the administrator. `requestId` is the **routine** request whose
+         *     hold is released; `forRequestId` is the **emergency** request that receives the units. Never automatic:
+         *     it is a recorded decision with a reason.
+         *
+         *     Rules, all checked in one transaction:
+         *     - the released request is APPROVED with urgency ROUTINE, at this bank;
+         *     - the receiving request is PENDING with urgency EMERGENCY, at the same bank, for the same group,
+         *       rhesus type and component;
+         *     - the emergency request is then approved exactly as `POST /requests/{id}/approval` would, using the
+         *       released units first. If it still cannot be met in full, nothing is released (all or nothing).
+         *
+         *     The routine request goes back to PENDING with a HOLD_RELEASED history entry naming the emergency
+         *     request and the reason, so it is never silently lost. The response is the emergency request, now APPROVED.
+         */
+        post: operations["releaseHoldForEmergency"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/donation-slots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Donation slots at blood banks, with places left
+         * @description Any signed-in user. Defaults to the next 14 days (Lagos dates). `placesLeft` is derived from the bookings
+         *     at the moment of the request and labelled with `computedAt`.
+         */
+        get: operations["listDonationSlots"];
+        put?: never;
+        /**
+         * Open a donation slot at the signed-in staff member's bank
+         * @description Bank staff only. The bank comes from the token. Not safe to repeat; each call opens a new slot.
+         */
+        post: operations["createDonationSlot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/donation-slots/{slotId}/bookings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slotId: components["parameters"]["SlotIdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A donor books a place in a slot
+         * @description Donors only; the donor comes from the token. A slot never has more active bookings (BOOKED or ATTENDED)
+         *     than its capacity, **including when two donors book the last place in the same second**: the database
+         *     enforces it, one booking succeeds and the other receives 409 `SLOT_FULL`.
+         *     One active booking per donor per slot: booking the same slot again returns 409 `ALREADY_BOOKED`, so a
+         *     double tap records one booking. Slots that have started cannot be booked (409 `SLOT_CLOSED`).
+         */
+        post: operations["bookDonationSlot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bookings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Donation bookings visible to the caller
+         * @description Donors see their own bookings. Bank staff see bookings for their bank's slots. The administrator sees all.
+         *     Hospital staff receive 403.
+         */
+        get: operations["listBookings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bookings/{bookingId}/cancellation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bookingId: components["parameters"]["BookingIdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A donor cancels their own booking, freeing the place
+         * @description Only the donor who made the booking; anyone else receives 404. Allowed while the booking is BOOKED and
+         *     the slot has not started. Not idempotent: a second cancellation returns 409 `BOOKING_NOT_ACTIVE`.
+         */
+        post: operations["cancelBooking"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bookings/{bookingId}/attendance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bookingId: components["parameters"]["BookingIdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bank staff record that the donor attended or did not show
+         * @description Staff of the bank that runs the slot, or the administrator; staff of another bank receive 404.
+         *     Allowed once the slot has started, and only for a BOOKED booking. Not idempotent: recording a second
+         *     outcome returns 409 `BOOKING_NOT_ACTIVE`.
+         */
+        post: operations["recordAttendance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stock and activity summary for a bank, derived from the records
+         * @description Bank staff see their own bank; `bankId` is ignored for them. The administrator sees every bank, or one
+         *     bank with `bankId`. Hospital staff and donors receive 403.
+         *     Every figure is computed from the records at the moment of the request (nothing is stored) and the
+         *     response carries `computedAt`. The windows used are stated in the response so the screen can label them.
+         */
+        get: operations["getDashboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/actuator/health": {
         parameters: {
             query?: never;
@@ -237,7 +526,7 @@ export interface components {
              * @description Stable machine-readable code. The interface switches on this, never on `message`.
              * @enum {string}
              */
-            code: "MALFORMED_REQUEST" | "UNAUTHENTICATED" | "INVALID_CREDENTIALS" | "FORBIDDEN" | "NOT_FOUND" | "VALIDATION_FAILED" | "IDEMPOTENCY_KEY_REUSED" | "DUPLICATE_UNIT_REFERENCE" | "UNITS_NO_LONGER_AVAILABLE" | "REQUEST_NOT_PENDING" | "INTERNAL_ERROR";
+            code: "MALFORMED_REQUEST" | "UNAUTHENTICATED" | "INVALID_CREDENTIALS" | "FORBIDDEN" | "NOT_FOUND" | "VALIDATION_FAILED" | "IDEMPOTENCY_KEY_REUSED" | "DUPLICATE_UNIT_REFERENCE" | "UNITS_NO_LONGER_AVAILABLE" | "REQUEST_NOT_PENDING" | "REQUEST_NOT_APPROVED" | "REQUEST_NOT_FULFILLED" | "REQUEST_CLOSED" | "HOLD_NOT_RELEASABLE" | "SLOT_FULL" | "SLOT_CLOSED" | "SLOT_NOT_STARTED" | "ALREADY_BOOKED" | "BOOKING_NOT_ACTIVE" | "INTERNAL_ERROR";
             /** @description Plain-language sentence safe to show to the user. */
             message: string;
             /** @description Same value as the X-Request-Id response header. */
@@ -274,16 +563,19 @@ export interface components {
         /**
          * @description PENDING: waiting for the bank. APPROVED: units reserved and on hold. DECLINED: refused with a reason.
          *     CANCELLED: withdrawn by the hospital. FULFILLED: all reserved units issued.
-         *     LAPSED: the hold passed before issue; units returned to stock.
+         *     LAPSED: the hold passed before issue; units returned to stock. A reversed issue, or a routine hold
+         *     released for an emergency, puts the request back to PENDING.
          *     UNIT_EXPIRED: a reserved unit passed its expiry date before issue.
          * @enum {string}
          */
         RequestState: "PENDING" | "APPROVED" | "DECLINED" | "CANCELLED" | "FULFILLED" | "LAPSED" | "UNIT_EXPIRED";
         /**
          * @description ACTIVE means the hold has not passed. LAPSED is reported as soon as `holdExpiresAt` passes.
+         *     ISSUED: the unit was handed over. REVERSED: that issue was reversed. RELEASED: the hold was ended early
+         *     (the hospital cancelled, or bank staff released it for an emergency). UNIT_EXPIRED: the unit expired while held.
          * @enum {string}
          */
-        ReservationStatus: "ACTIVE" | "LAPSED" | "ISSUED" | "UNIT_EXPIRED" | "RELEASED";
+        ReservationStatus: "ACTIVE" | "LAPSED" | "ISSUED" | "REVERSED" | "UNIT_EXPIRED" | "RELEASED";
         SessionCreate: {
             /** Format: email */
             email: string;
@@ -496,7 +788,10 @@ export interface components {
         HistoryEntry: {
             /** Format: date-time */
             at: string;
-            /** @description What happened, for example CREATED, APPROVED, DECLINED, HOLD_LAPSED. */
+            /**
+             * @description What happened, for example RECORDED, CREATED, APPROVED, DECLINED, RESERVED, ISSUED, ISSUE_REVERSED,
+             *     CANCELLED, HOLD_RELEASED, HOLD_LAPSED, EXPIRED, UNIT_EXPIRED.
+             */
             event: string;
             /** @description Display name and organisation of who did it, or "System" for the background job. */
             actor: string;
@@ -593,6 +888,201 @@ export interface components {
         Health: {
             /** @enum {string} */
             status: "UP" | "DOWN";
+        };
+        /** @description A unit with its history, oldest first. Entries are never removed. */
+        UnitDetail: {
+            /** Format: uuid */
+            id: string;
+            reference: string;
+            bloodGroup: components["schemas"]["BloodGroup"];
+            rhesus: components["schemas"]["Rhesus"];
+            component: components["schemas"]["Component"];
+            /** Format: date */
+            collectionDate: string;
+            /** Format: date */
+            expiryDate: string;
+            state: components["schemas"]["UnitState"];
+            bank: components["schemas"]["Organisation"];
+            /** Format: date-time */
+            recordedAt: string;
+            history: components["schemas"]["HistoryEntry"][];
+        };
+        IssueReversal: {
+            reason: string;
+        };
+        Cancellation: {
+            /** @description Why the hospital no longer needs the units. Never a patient's name. */
+            reason: string;
+        };
+        HoldRelease: {
+            /**
+             * Format: uuid
+             * @description The PENDING emergency request that receives the released units.
+             */
+            forRequestId: string;
+            reason: string;
+        };
+        DonationSlotCreate: {
+            /**
+             * Format: date-time
+             * @description In the future.
+             */
+            startsAt: string;
+            /**
+             * Format: date-time
+             * @description After startsAt, at most 8 hours later.
+             */
+            endsAt: string;
+            /**
+             * Format: int32
+             * @description Number of donors who can book this slot.
+             */
+            capacity: number;
+        };
+        /**
+         * @example {
+         *       "id": "2d3e4f5a-6b7c-4d8e-9f0a-1b2c3d4e5f6a",
+         *       "bank": {
+         *         "id": "0d1f6a3e-2b4c-4e5f-8a9b-1c2d3e4f5a6b",
+         *         "name": "Lagos Central Blood Bank (demo)",
+         *         "type": "BLOOD_BANK",
+         *         "area": "Ikeja"
+         *       },
+         *       "startsAt": "2026-10-29T09:00:00+01:00",
+         *       "endsAt": "2026-10-29T10:00:00+01:00",
+         *       "capacity": 4,
+         *       "booked": 3,
+         *       "placesLeft": 1
+         *     }
+         */
+        DonationSlot: {
+            /** Format: uuid */
+            id: string;
+            bank: components["schemas"]["Organisation"];
+            /** Format: date-time */
+            startsAt: string;
+            /** Format: date-time */
+            endsAt: string;
+            /** Format: int32 */
+            capacity: number;
+            /**
+             * Format: int32
+             * @description Active bookings (BOOKED or ATTENDED).
+             */
+            booked: number;
+            /** Format: int32 */
+            placesLeft: number;
+        };
+        DonationSlotList: {
+            /**
+             * Format: date-time
+             * @description When `placesLeft` was derived from the bookings. Show it beside the figures.
+             */
+            computedAt: string;
+            items: components["schemas"]["DonationSlot"][];
+        };
+        /**
+         * @description BOOKED until the slot; then ATTENDED or NO_SHOW as recorded by staff. CANCELLED by the donor.
+         * @enum {string}
+         */
+        BookingStatus: "BOOKED" | "CANCELLED" | "ATTENDED" | "NO_SHOW";
+        Booking: {
+            /** Format: uuid */
+            id: string;
+            slot: components["schemas"]["DonationSlot"];
+            donor: components["schemas"]["DonorSummary"];
+            status: components["schemas"]["BookingStatus"];
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** @description Display name only; no contact or health details. */
+        DonorSummary: {
+            /** Format: uuid */
+            id: string;
+            displayName: string;
+        };
+        BookingPage: {
+            items: components["schemas"]["Booking"][];
+            /** Format: int32 */
+            page: number;
+            /** Format: int32 */
+            size: number;
+            /** Format: int64 */
+            totalItems: number;
+        };
+        Attendance: {
+            /** @enum {string} */
+            outcome: "ATTENDED" | "NO_SHOW";
+        };
+        Dashboard: {
+            /**
+             * Format: date-time
+             * @description When every figure on this dashboard was derived from the records.
+             */
+            computedAt: string;
+            /** @description The bank summarised; null when the administrator views every bank. */
+            bank: components["schemas"]["Organisation"] | null;
+            /**
+             * Format: int32
+             * @description A group is "running low" when fewer than this many units are available.
+             */
+            lowStockThreshold: number;
+            /**
+             * Format: int32
+             * @description Window used for `holdsEndingSoon`.
+             */
+            holdsEndingWithinMinutes: number;
+            /**
+             * Format: int32
+             * @description Window used for `unitsExpiringSoon`.
+             */
+            expiringWithinDays: number;
+            /** @description All eight groups, including those with zero, counting every component. */
+            availableByGroup: components["schemas"]["GroupCount"][];
+            /** @description Groups with fewer than `lowStockThreshold` available units. */
+            lowGroups: components["schemas"]["GroupCount"][];
+            openRequests: components["schemas"]["OpenRequestCounts"];
+            /** @description Active holds ending within the window, soonest first. */
+            holdsEndingSoon: components["schemas"]["HoldEndingSoon"][];
+            /** @description Available or reserved units whose expiry date falls within the window, soonest first. */
+            unitsExpiringSoon: components["schemas"]["Unit"][];
+            /** @description The 20 most recent history entries, newest first. */
+            recentActivity: components["schemas"]["ActivityEntry"][];
+        };
+        GroupCount: {
+            bloodGroup: components["schemas"]["BloodGroup"];
+            rhesus: components["schemas"]["Rhesus"];
+            /** Format: int32 */
+            availableUnits: number;
+        };
+        OpenRequestCounts: {
+            /** Format: int32 */
+            pending: number;
+            /**
+             * Format: int32
+             * @description Approved and still holding units.
+             */
+            approved: number;
+        };
+        HoldEndingSoon: {
+            /** Format: uuid */
+            requestId: string;
+            requestReference: string;
+            hospital: components["schemas"]["Organisation"];
+            unit: components["schemas"]["UnitSummary"];
+            /** Format: date-time */
+            holdExpiresAt: string;
+        };
+        ActivityEntry: {
+            /** Format: date-time */
+            at: string;
+            event: string;
+            /** @enum {string} */
+            subject: "UNIT" | "REQUEST" | "BOOKING";
+            /** @description The unit reference, request reference or booking's slot time, for display. */
+            reference: string;
+            actor: string;
+            note?: string | null;
         };
     };
     responses: {
@@ -736,6 +1226,9 @@ export interface components {
         RequestIdHeader: string;
         /** @description Identifier of the blood request (not the X-Request-Id header). */
         RequestIdPath: string;
+        UnitIdPath: string;
+        SlotIdPath: string;
+        BookingIdPath: string;
         BankIdQuery: string;
         BloodGroupQuery: components["schemas"]["BloodGroup"];
         RhesusQuery: components["schemas"]["Rhesus"];
@@ -1190,6 +1683,526 @@ export interface operations {
                 };
             };
             422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getUnit: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description One identifier per user action (a UUID is recommended). Echoed back and logged. */
+                "X-Request-Id"?: components["parameters"]["RequestIdHeader"];
+            };
+            path: {
+                unitId: components["parameters"]["UnitIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The unit and its history */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnitDetail"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    issueRequest: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description One identifier per user action (a UUID is recommended). Echoed back and logged. */
+                "X-Request-Id"?: components["parameters"]["RequestIdHeader"];
+            };
+            path: {
+                /** @description Identifier of the blood request (not the X-Request-Id header). */
+                requestId: components["parameters"]["RequestIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Issued; the request is FULFILLED and its history shows who issued and when */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BloodRequest"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `REQUEST_NOT_APPROVED`: the request is not APPROVED now (pending, already fulfilled, its hold lapsed, or a reserved unit expired). */
+            409: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "REQUEST_NOT_APPROVED",
+                     *       "message": "This request cannot be issued because its hold lapsed at 11:06. Approve it again if units are free.",
+                     *       "requestId": "7f9c2b1e-4c1a-4f7e-9d0b-2a6c8e1f3b55",
+                     *       "details": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+        };
+    };
+    reverseIssue: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description One identifier per user action (a UUID is recommended). Echoed back and logged. */
+                "X-Request-Id"?: components["parameters"]["RequestIdHeader"];
+            };
+            path: {
+                /** @description Identifier of the blood request (not the X-Request-Id header). */
+                requestId: components["parameters"]["RequestIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "reason": "Issued to the wrong request; the units never left the bank."
+                 *     }
+                 */
+                "application/json": components["schemas"]["IssueReversal"];
+            };
+        };
+        responses: {
+            /** @description Reversed; the request is PENDING again and its history shows both entries */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BloodRequest"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `REQUEST_NOT_FULFILLED`: there is no issue to reverse (the request is not FULFILLED). */
+            409: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    cancelRequest: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description One identifier per user action (a UUID is recommended). Echoed back and logged. */
+                "X-Request-Id"?: components["parameters"]["RequestIdHeader"];
+            };
+            path: {
+                /** @description Identifier of the blood request (not the X-Request-Id header). */
+                requestId: components["parameters"]["RequestIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "reason": "Patient transferred to another hospital."
+                 *     }
+                 */
+                "application/json": components["schemas"]["Cancellation"];
+            };
+        };
+        responses: {
+            /** @description Cancelled; any held units are back in stock */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BloodRequest"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `REQUEST_CLOSED`: the request is already fulfilled, declined, cancelled, lapsed or ended by an expired unit. */
+            409: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    releaseHoldForEmergency: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description One identifier per user action (a UUID is recommended). Echoed back and logged. */
+                "X-Request-Id"?: components["parameters"]["RequestIdHeader"];
+            };
+            path: {
+                /** @description Identifier of the blood request (not the X-Request-Id header). */
+                requestId: components["parameters"]["RequestIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "forRequestId": "5b6c7d8e-9f0a-4b1c-8d2e-3f4a5b6c7d8e",
+                 *       "reason": "Emergency at Ikorodu; Yaba confirmed by phone that its courier has not left."
+                 *     }
+                 */
+                "application/json": components["schemas"]["HoldRelease"];
+            };
+        };
+        responses: {
+            /** @description Released; the emergency request is APPROVED and holds the units */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BloodRequest"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description `HOLD_NOT_RELEASABLE`: the released request is not an APPROVED routine request, or the two requests do not
+             *     match (bank, group, rhesus, component, or the receiver is not an emergency).
+             *     `REQUEST_NOT_PENDING`: the emergency request is no longer pending.
+             *     `UNITS_NO_LONGER_AVAILABLE`: even with the released units the emergency cannot be met; nothing changed.
+             */
+            409: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listDonationSlots: {
+        parameters: {
+            query?: {
+                bankId?: components["parameters"]["BankIdQuery"];
+                /** @description First day to include. Default today. */
+                from?: string;
+                /** @description Last day to include. Default 14 days after `from`. At most 31 days after `from`. */
+                to?: string;
+            };
+            header?: {
+                /** @description One identifier per user action (a UUID is recommended). Echoed back and logged. */
+                "X-Request-Id"?: components["parameters"]["RequestIdHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Slots ordered by start time; empty `items` when none match */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DonationSlotList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createDonationSlot: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description One identifier per user action (a UUID is recommended). Echoed back and logged. */
+                "X-Request-Id"?: components["parameters"]["RequestIdHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "startsAt": "2026-10-29T09:00:00+01:00",
+                 *       "endsAt": "2026-10-29T10:00:00+01:00",
+                 *       "capacity": 4
+                 *     }
+                 */
+                "application/json": components["schemas"]["DonationSlotCreate"];
+            };
+        };
+        responses: {
+            /** @description Slot opened */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DonationSlot"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    bookDonationSlot: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description One identifier per user action (a UUID is recommended). Echoed back and logged. */
+                "X-Request-Id"?: components["parameters"]["RequestIdHeader"];
+            };
+            path: {
+                slotId: components["parameters"]["SlotIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Booked */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Booking"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `SLOT_FULL`, `ALREADY_BOOKED` or `SLOT_CLOSED`. */
+            409: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "SLOT_FULL",
+                     *       "message": "This slot has no places left. Please choose another time.",
+                     *       "requestId": "7f9c2b1e-4c1a-4f7e-9d0b-2a6c8e1f3b55",
+                     *       "details": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listBookings: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["BookingStatus"];
+                /** @description Zero-based page number. */
+                page?: components["parameters"]["Page"];
+                /** @description Items per page. */
+                size?: components["parameters"]["Size"];
+            };
+            header?: {
+                /** @description One identifier per user action (a UUID is recommended). Echoed back and logged. */
+                "X-Request-Id"?: components["parameters"]["RequestIdHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of bookings, soonest slot first */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookingPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    cancelBooking: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description One identifier per user action (a UUID is recommended). Echoed back and logged. */
+                "X-Request-Id"?: components["parameters"]["RequestIdHeader"];
+            };
+            path: {
+                bookingId: components["parameters"]["BookingIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cancelled; the place is free again */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Booking"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            /** @description `BOOKING_NOT_ACTIVE` (already cancelled or recorded) or `SLOT_CLOSED` (the slot has started). */
+            409: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+        };
+    };
+    recordAttendance: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description One identifier per user action (a UUID is recommended). Echoed back and logged. */
+                "X-Request-Id"?: components["parameters"]["RequestIdHeader"];
+            };
+            path: {
+                bookingId: components["parameters"]["BookingIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "outcome": "ATTENDED"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Attendance"];
+            };
+        };
+        responses: {
+            /** @description Recorded */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Booking"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `BOOKING_NOT_ACTIVE` (not BOOKED) or `SLOT_NOT_STARTED` (too early to record). */
+            409: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getDashboard: {
+        parameters: {
+            query?: {
+                bankId?: components["parameters"]["BankIdQuery"];
+            };
+            header?: {
+                /** @description One identifier per user action (a UUID is recommended). Echoed back and logged. */
+                "X-Request-Id"?: components["parameters"]["RequestIdHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The dashboard */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dashboard"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalError"];
         };
     };
