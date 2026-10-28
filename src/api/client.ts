@@ -63,7 +63,10 @@ export function setUnauthenticatedHandler(handler: (() => void) | null): void {
   onUnauthenticated = handler;
 }
 
-/** Mock only: ask Prism for this status code on every call (`Prefer: code=409`). */
+/**
+ * Mock only: ask Prism for this status code on every write (`Prefer: code=409`). Reads are left
+ * alone, so the reload after a refused write still shows the request.
+ */
 export function setForcedMockCode(code: number | null): void {
   forcedMockCode = code;
 }
@@ -138,7 +141,8 @@ export async function apiFetch<T>(path: string, opts: RequestOptions = {}): Prom
   if (opts.auth !== false && authToken) headers.set('Authorization', `Bearer ${authToken}`);
   if (opts.idempotencyKey) headers.set('Idempotency-Key', opts.idempotencyKey);
   if (IS_MOCK) {
-    const code = forcedMockCode ?? opts.mockPreferCode;
+    const isWrite = (opts.method ?? 'GET') !== 'GET';
+    const code = (isWrite ? forcedMockCode : null) ?? opts.mockPreferCode;
     if (code) headers.set('Prefer', `code=${code}`);
   }
 

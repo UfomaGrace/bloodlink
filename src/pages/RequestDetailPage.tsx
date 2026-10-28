@@ -23,8 +23,11 @@
 //   connection we can't tell whether the action happened, so only a fresh GET shows the truth.
 // - The result shows in ResultAlert (components/ResultAlert): role="status" for success,
 //   role="alert" for an error. Focus moves to it after each action.
-// - Mock only: Prism always answers APPROVED, so a checkbox can treat the request as PENDING
-//   to try the buttons. It never renders on the live API (IS_MOCK is false there).
+// - Mock only (components/MockControls, never on the live API): Prism always answers with one
+//   canned request whose hold has long ended. "Simulate state" shows it as Pending, Approved
+//   (hold running or unit expired) or Fulfilled, with fresh dates, so every action can be tried;
+//   "Force response" makes Prism refuse writes. Simulation is display only: the write still goes
+//   to Prism, and once it answers the page shows what Prism sent, so the simulation ends.
 // - Active holds count down ("Hold ends in 1h 12m"). The moment a hold passes we show it as
 //   lapsed ourselves (the service does the same at read time), and if no unit is left on hold
 //   or issued the request shows as LAPSED too. Then we reload once, quietly, to pick up what the
@@ -44,6 +47,7 @@ import { useAuth } from "../auth/AuthContext";
 import { applyApiError } from "../components/form/applyApiError";
 import { FormAlert } from "../components/form/FormAlert";
 import { FormikTextarea } from "../components/form/FormikTextarea";
+import { MockControls } from "../components/MockControls";
 import { RequestStateBadge } from "../components/RequestStateBadge";
 import { ResultAlert, type Notice } from "../components/ResultAlert";
 import { UrgencyLabel } from "../components/UrgencyLabel";
@@ -62,6 +66,7 @@ import {
   RESERVATION_STATUS_TONES,
   timeAgo,
 } from "../lib/labels";
+import { simulateRequest, type SimulatedState } from "../lib/mockSimulation";
 import {
   actsForBank,
   canDecide,
@@ -75,7 +80,6 @@ import {
 import { DECLINE_REASON_MAX, declineReason } from "../lib/validation";
 import { cn } from "../shared/cn";
 import { Button } from "../shared/ui/button";
-import { Checkbox } from "../shared/ui/checkbox";
 import { ConfirmDialog, Dialog } from "../shared/ui/dialog";
 import { ErrorState } from "../shared/ui/error-state";
 import { Skeleton } from "../shared/ui/skeleton";
@@ -144,7 +148,8 @@ function RequestDetail({ requestId }: { requestId: string }) {
   const setUpdated = (next: BloodRequest | null) =>
     setUpdatedState(next && { request: next, over: loaded.data });
   const [notice, setNotice] = useState<Notice | null>(null);
-  const [simulatePending, setSimulatePending] = useState(false);
+  // Mock only: the state to show the canned request in, and when it was picked (dates count from then).
+  const [simulated, setSimulatedState] = useState<{ state: SimulatedState; at: number } | null>(null);
   const [approveOpen, setApproveOpen] = useState(false);
   const [declineOpen, setDeclineOpen] = useState(false);
   const [declining, setDeclining] = useState(false);
@@ -156,26 +161,31 @@ function RequestDetail({ requestId }: { requestId: string }) {
   const [unconfirmed, setUnconfirmed] = useState<{ from: BloodRequest | null } | null>(null);
 
   const fetched = updated && updated.over === loaded.data ? updated.request : loaded.data;
-  const now = useHoldClock(fetched?.reservations ?? [], loaded.reload);
-  const current = fetched && withPassedHolds(fetched, now);
-  const request: BloodRequest | null =
-    current && IS_MOCK && simulatePending ? { ...current, state: "PENDING" } : current;
+  const shown = fetched && IS_MOCK && simulated ? simulateRequest(fetched, simulated.state, simulated.at) : fetched;
+  const now = useHoldClock(shown?.reservations ?? [], loaded.reload);
+  const request = shown && withPassedHolds(shown, now);
 
   // After a lost connection, once the reload has answered, say what the request shows now.
   if (unconfirmed && !loaded.loading && (loaded.data !== unconfirmed.from || loaded.error)) {
     setUnconfirmed(null);
-    setNotice({ tone: "info", message: unconfirmedMessage(loaded.error ? null : (current?.state ?? null)) });
+    setNotice({ tone: "info", message: unconfirmedMessage(loaded.error ? null : (request?.state ?? null)) });
   }
 
+  /** Mock only: a "Simulate state" choice. Its dates count from the moment it is picked. */
+  function pickSimulation(state: SimulatedState | null) {
+    setSimulatedState(state && { state, at: Date.now() });
+  }
+
+  // Once a write has answered, show what Prism sent: the simulation ends.
   function succeeded(next: BloodRequest, message: string) {
     setUpdated(next);
-    setSimulatePending(false);
+    setSimulatedState(null);
     setNotice({ tone: "success", message });
   }
 
   /** Show the error; reload when our copy may no longer be true. */
   function failed(error: ApiError) {
-    setSimulatePending(false);
+    setSimulatedState(null);
     setNotice({ tone: "error", error });
     if (error.status === 409 || error.status === 404 || error.isConnectionProblem) {
       setUpdated(null);
@@ -185,7 +195,7 @@ function RequestDetail({ requestId }: { requestId: string }) {
 
   /** A lost connection: we can't tell whether it happened. No "failed", no retry: reload and report. */
   function checkAfterLostConnection() {
-    setSimulatePending(false);
+    setSimulatedState(null);
     setNotice(null);
     setUpdated(null);
     setUnconfirmed({ from: loaded.data });
@@ -332,17 +342,7 @@ function RequestDetail({ requestId }: { requestId: string }) {
         />
       )}
 
-      {IS_MOCK && actsForBank(request, viewer) && (
-        <div className="mt-4 rounded-md border border-dashed border-input p-3">
-          <Checkbox
-            label="Simulate pending state (mock only)"
-            description="The mock always answers APPROVED. Tick this to try Approve and Decline."
-            checked={simulatePending}
-            onCheckedChange={setSimulatePending}
-            className="min-h-11 items-center"
-          />
-        </div>
-      )}
+      <MockControls className="mt-4" simulation={{ value: simulated?.state ?? null, onChange: pickSimulation }} />
 
       {canDecide(request, viewer) && (
         <section
