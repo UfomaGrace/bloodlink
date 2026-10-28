@@ -10,8 +10,8 @@
 //   shows the service's message, the dialog closes and the request is loaded again. After a 409
 //   our copy is out of date (someone else decided it, or the units went), and after a lost
 //   connection we can't tell whether the action happened, so only a fresh GET shows the truth.
-// - Focus moves to the result alert after each action. It waits a tick so it lands after the
-//   dialog has handed focus back to the button that opened it.
+// - The result shows in ResultAlert (components/ResultAlert): role="status" for success,
+//   role="alert" for an error. Focus moves to it after each action.
 // - Mock only: Prism always answers APPROVED, so a checkbox can treat the request as PENDING
 //   to try the buttons. It never renders on the live API (IS_MOCK is false there).
 // - Active holds count down ("Hold ends in 1h 12m"). The moment a hold passes we show it as
@@ -23,8 +23,7 @@
 //   saying in plain words what happened.
 
 import { Form, Formik, type FormikHelpers } from "formik";
-import { CheckCircle2 } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router";
 import * as Yup from "yup";
 import { IS_MOCK, toApiError, type ApiError } from "../api/client";
@@ -35,6 +34,7 @@ import { applyApiError } from "../components/form/applyApiError";
 import { FormAlert } from "../components/form/FormAlert";
 import { FormikTextarea } from "../components/form/FormikTextarea";
 import { RequestStateBadge } from "../components/RequestStateBadge";
+import { ResultAlert, type Notice } from "../components/ResultAlert";
 import { UrgencyLabel } from "../components/UrgencyLabel";
 import { useAsync } from "../hooks/useAsync";
 import { useHoldClock } from "../hooks/useHoldClock";
@@ -68,9 +68,6 @@ const backLink = cn(
   "inline-flex min-h-11 items-center rounded-sm text-sm font-medium text-(--color-primary) underline underline-offset-2",
   focusRing,
 );
-
-/** The result of the last Approve or Decline, shown in the alert at the top. */
-type Notice = { tone: "success"; message: string } | { tone: "error"; error: ApiError };
 
 const DECLINE_FIELDS = ["reason"] as const;
 const declineSchema = Yup.object({ reason: declineReason() });
@@ -375,46 +372,6 @@ function RequestDetail({ requestId }: { requestId: string }) {
         </Formik>
       </Dialog>
     </>
-  );
-}
-
-function ResultAlert({ notice }: { notice: Notice }) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  // A new notice object each action, so this runs again even for the same text.
-  // The timeout lets the closing dialog return focus first; then we take it.
-  useEffect(() => {
-    const id = window.setTimeout(() => ref.current?.focus(), 0);
-    return () => window.clearTimeout(id);
-  }, [notice]);
-
-  const success = notice.tone === "success";
-  return (
-    <div
-      ref={ref}
-      role="alert"
-      tabIndex={-1}
-      className={cn(
-        "rounded-md border border-l-4 border-border bg-surface p-4 text-sm",
-        success ? "border-l-success" : "border-l-error",
-        focusRing,
-      )}
-    >
-      {success ? (
-        <p className="flex items-start gap-2 font-medium">
-          <CheckCircle2 aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-success" />
-          <span className="min-w-0">{notice.message}</span>
-        </p>
-      ) : (
-        <>
-          <p className="font-medium text-error">
-            <span aria-hidden="true">! </span>
-            {notice.error.message}
-          </p>
-          <p className="mt-2 break-all text-muted-foreground">Reference: {notice.error.requestId}</p>
-        </>
-      )}
-    </div>
   );
 }
 
