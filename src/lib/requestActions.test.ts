@@ -4,6 +4,8 @@ import {
   actsForBank,
   canDecide,
   canIssue,
+  expiredHeldUnits,
+  expiredUnitsMessage,
   issuedUnitReferences,
   unconfirmedMessage,
   viewerOf,
@@ -139,6 +141,44 @@ describe("canIssue", () => {
     expect(canIssue(onExpiry, ourBankStaff, NOW)).toBe(true);
     // 23:30 UTC on the 28th is already the 29th in Lagos.
     expect(canIssue(onExpiry, ourBankStaff, at("2026-10-28T23:30:00Z"))).toBe(false);
+  });
+});
+
+describe("expiredHeldUnits", () => {
+  it("names the held units past their expiry date in Lagos", () => {
+    const req = approved(
+      reservation("LCB-013", "ACTIVE", "2026-10-28T12:00:00Z", "2026-10-28"),
+      reservation("LCB-014", "ACTIVE", "2026-10-28T12:00:00Z", "2026-10-27"),
+    );
+    expect(expiredHeldUnits(req, NOW)).toEqual(["LCB-014"]);
+    // From Lagos midnight the unit expiring on the 28th is past its date too.
+    expect(expiredHeldUnits(req, at("2026-10-28T23:30:00Z"))).toEqual(["LCB-013", "LCB-014"]);
+  });
+
+  it("is empty when every held unit is in date, and ignores holds that are not ACTIVE", () => {
+    expect(expiredHeldUnits(approved(reservation("U1")), NOW)).toEqual([]);
+    const lapsed = approved(reservation("U1", "LAPSED", "2026-10-28T12:00:00Z", "2026-10-01"));
+    expect(expiredHeldUnits(lapsed, NOW)).toEqual([]);
+  });
+
+  it("goes with canIssue: an expired held unit is why the issue is refused", () => {
+    const req = approved(reservation("LCB-014", "ACTIVE", "2026-10-28T12:00:00Z", "2026-10-27"));
+    expect(canIssue(req, ourBankStaff, NOW)).toBe(false);
+    expect(expiredHeldUnits(req, NOW)).toEqual(["LCB-014"]);
+  });
+});
+
+describe("expiredUnitsMessage", () => {
+  it("names one unit and says the status is derived", () => {
+    expect(expiredUnitsMessage(["LCB-014"])).toBe(
+      "Can't record as issued: unit LCB-014 passed its expiry date (based on expiry date).",
+    );
+  });
+
+  it("names several units", () => {
+    expect(expiredUnitsMessage(["LCB-013", "LCB-014"])).toBe(
+      "Can't record as issued: units LCB-013, LCB-014 passed their expiry dates (based on expiry date).",
+    );
   });
 });
 

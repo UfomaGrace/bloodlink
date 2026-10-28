@@ -45,6 +45,24 @@ export function canIssue(request: BloodRequest, viewer: Viewer, now: number): bo
   );
 }
 
+/**
+ * The units on hold that have passed their expiry date, which stop the issue. Worked out from
+ * expiryDate on our side: UnitSummary has no state field yet.
+ */
+export function expiredHeldUnits(request: BloodRequest, now: number): string[] {
+  return request.reservations
+    .filter((r) => r.status === "ACTIVE" && isUnitExpired(r.unit.expiryDate, now))
+    .map((r) => r.unit.reference);
+}
+
+/** Why the issue is refused, naming the expired units. Marked as derived from the expiry date. */
+export function expiredUnitsMessage(unitReferences: readonly string[]): string {
+  if (unitReferences.length === 1) {
+    return `Can't record as issued: unit ${unitReferences[0]} passed its expiry date (based on expiry date).`;
+  }
+  return `Can't record as issued: units ${unitReferences.join(", ")} passed their expiry dates (based on expiry date).`;
+}
+
 /** The references of the units an issue hands over: those on a running hold. */
 export function issuedUnitReferences(request: BloodRequest): string[] {
   return request.reservations.filter((r) => r.status === "ACTIVE").map((r) => r.unit.reference);

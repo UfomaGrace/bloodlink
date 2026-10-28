@@ -9,7 +9,9 @@
 // - The same people see "Record as issued" while the request is APPROVED with every hold running
 //   and no unit past its expiry date (canIssue). ConfirmDialog lists the unit references →
 //   POST /requests/{id}/issue. 409 REQUEST_NOT_APPROVED (the hold lapsed, or it was already
-//   issued) shows the message and reloads.
+//   issued) shows the message and reloads. If a held unit has passed its expiry date, the Issue
+//   section says which one instead of offering the button (worked out from expiryDate, and
+//   labelled so: UnitSummary has no state field yet).
 // - While an action is in flight, the status line under the heading says so ("Recording issue…"),
 //   because the busy button only shows a spinner.
 // - Issue is not idempotent and takes no Idempotency-Key yet. On TIMEOUT or NETWORK_ERROR we
@@ -64,6 +66,8 @@ import {
   actsForBank,
   canDecide,
   canIssue,
+  expiredHeldUnits,
+  expiredUnitsMessage,
   issuedUnitReferences,
   unconfirmedMessage,
   viewerOf,
@@ -293,6 +297,9 @@ function RequestDetail({ requestId }: { requestId: string }) {
 
   const what = whatLabel(request);
   const unitReferences = issuedUnitReferences(request);
+  const issuable = canIssue(request, viewer, now);
+  const expiredUnits =
+    request.state === "APPROVED" && actsForBank(request, viewer) ? expiredHeldUnits(request, now) : [];
   const busy = loaded.loading || inFlight !== null;
   const statusLine =
     inFlight ??
@@ -345,7 +352,7 @@ function RequestDetail({ requestId }: { requestId: string }) {
           <h2 id="decision-heading" className="text-lg font-semibold">
             Decision
           </h2>
-          <p className="mt-1 text-sm text-muted-foreground)">
+          <p className="mt-1 text-sm text-muted-foreground">
             Approving reserves {unitsLabel(request.quantity)} of {what} for {request.hospital.name}.
           </p>
           <div className="mt-4 flex flex-col gap-3 sm:flex-row">
@@ -364,20 +371,26 @@ function RequestDetail({ requestId }: { requestId: string }) {
         </section>
       )}
 
-      {canIssue(request, viewer, now) && (
+      {(issuable || expiredUnits.length > 0) && (
         <section aria-labelledby="issue-heading" className="mt-6 rounded-md border border-border bg-surface p-4">
           <h2 id="issue-heading" className="text-lg font-semibold">
             Issue
           </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            When the units leave the bank for {request.hospital.name}, record them as issued. The request is then
-            fulfilled.
-          </p>
-          <div className="mt-4">
-            <Button className="min-h-11" disabled={busy} onClick={() => setIssueOpen(true)}>
-              Record as issued
-            </Button>
-          </div>
+          {expiredUnits.length > 0 ? (
+            <p className="mt-1 text-sm font-medium wrap-break-word">{expiredUnitsMessage(expiredUnits)}</p>
+          ) : (
+            <>
+              <p className="mt-1 text-sm text-muted-foreground">
+                When the units leave the bank for {request.hospital.name}, record them as issued. The request is then
+                fulfilled.
+              </p>
+              <div className="mt-4">
+                <Button className="min-h-11" disabled={busy} onClick={() => setIssueOpen(true)}>
+                  Record as issued
+                </Button>
+              </div>
+            </>
+          )}
         </section>
       )}
 
