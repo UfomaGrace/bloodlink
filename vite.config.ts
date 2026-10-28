@@ -9,6 +9,7 @@ export default defineConfig({
     react()
   ],
 
-  test: { environment: 'node', include: ['src/**/*.test.ts'] },
+  // Node by default. A component test opts into a DOM with `// @vitest-environment jsdom` at its top.
+  test: { environment: 'node', include: ['src/**/*.test.{ts,tsx}'] },
 
 })
