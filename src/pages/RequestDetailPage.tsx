@@ -1,7 +1,8 @@
 // RequestDetailPage (/requests/:requestId): one request, its reserved units and its history.
 //
 // - GET /requests/{id}. 404 means "not found or not yours", so both get "Request not found".
-// - Bank staff and the administrator see Approve and Decline while the request is PENDING.
+// - Staff of the addressed bank and the administrator see Approve and Decline while the request is
+//   PENDING (lib/requestActions canDecide). Staff of another bank never see them.
 //     Approve → ConfirmDialog → POST /requests/{id}/approval (all or nothing).
 //     Decline → dialog with a reason (lib/validation declineReason) → POST /requests/{id}/declination.
 //   Success shows the request the service sent back, plus a success alert.
@@ -50,6 +51,7 @@ import {
   RESERVATION_STATUS_TONES,
   timeAgo,
 } from "../lib/labels";
+import { actsForBank, canDecide, viewerOf } from "../lib/requestActions";
 import { DECLINE_REASON_MAX, declineReason } from "../lib/validation";
 import { cn } from "../shared/cn";
 import { Button } from "../shared/ui/button";
@@ -109,8 +111,8 @@ export default function RequestDetailPage() {
 }
 
 function RequestDetail({ requestId }: { requestId: string }) {
-  const { role } = useAuth();
-  const canDecide = role === "BANK_STAFF" || role === "ADMIN";
+  const { session } = useAuth();
+  const viewer = viewerOf(session);
 
   const loaded = useAsync((signal) => api.getRequest(requestId, signal).then((res) => res.data), [requestId]);
   // The request an action sent back, and the loaded copy it replaced. It wins until a reload
@@ -233,7 +235,6 @@ function RequestDetail({ requestId }: { requestId: string }) {
     );
   }
 
-  const isPending = request.state === "PENDING";
   const what = whatLabel(request);
 
   return (
@@ -263,7 +264,7 @@ function RequestDetail({ requestId }: { requestId: string }) {
         />
       )}
 
-      {IS_MOCK && canDecide && (
+      {IS_MOCK && actsForBank(request, viewer) && (
         <div className="mt-4 rounded-md border border-dashed border-input p-3">
           <Checkbox
             label="Simulate pending state (mock only)"
@@ -275,7 +276,7 @@ function RequestDetail({ requestId }: { requestId: string }) {
         </div>
       )}
 
-      {canDecide && isPending && (
+      {canDecide(request, viewer) && (
         <section
           aria-labelledby="decision-heading"
           className="mt-6 rounded-md border border-border bg-surface p-4"
