@@ -224,12 +224,12 @@ function StartFromFindBlood() {
   return (
     <section
       aria-labelledby="start-heading"
-      className="mt-6 rounded-md border border-(--color-border) bg-(--color-surface) p-5"
+      className="mt-6 rounded-md border border-border bg-surface p-5"
     >
       <h2 id="start-heading" className="text-lg font-semibold">
         Start from Find blood
       </h2>
-      <p className="mt-2 text-(--color-text-muted)">
+      <p className="mt-2 text-muted-foreground">
         Find a bank that has the blood you need, then choose "Request units" next to it.
       </p>
       <Link to="/availability" className={cn(primaryLink, "mt-4")}>
@@ -318,12 +318,12 @@ function RequestForm({
 
   return (
     <>
-      <p className="mt-2 text-(--color-text-muted)">
+      <p className="mt-2 text-muted-foreground">
         Ask one blood bank for units. Don't include patient details.
       </p>
 
       {bankNotFound && (
-        <p className="mt-4 rounded-md border border-(--color-border) bg-(--color-surface) p-4 text-sm">
+        <p className="mt-4 rounded-md border border-border bg-surface p-4 text-sm">
           We couldn't find the bank from your Find blood link. Choose a bank below.
         </p>
       )}
@@ -397,7 +397,7 @@ function RequestForm({
               required
             />
 
-            <p className="text-sm text-(--color-text-muted)">{NO_RESERVE_NOTE}</p>
+            <p className="text-sm text-muted-foreground">{NO_RESERVE_NOTE}</p>
 
             <Button type="submit" size="lg" className="min-h-11 self-start">
               Review request
@@ -424,7 +424,7 @@ function RequestForm({
                     urgency={review.body.urgency}
                     neededBy={review.body.neededBy}
                   />
-                  <p className="mt-4 text-(--color-text-muted)">{NO_RESERVE_NOTE}</p>
+                  <p className="mt-4 text-muted-foreground">{NO_RESERVE_NOTE}</p>
                 </>
               )}
             </ConfirmDialog>
@@ -467,7 +467,7 @@ function DetailList({ details }: { details: { term: string; value: ReactNode }[]
     <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
       {details.map(({ term, value }) => (
         <div key={term} className="contents">
-          <dt className="text-(--color-text-muted)">{term}</dt>
+          <dt className="text-muted-foreground">{term}</dt>
           <dd className="min-w-0 wrap-break-word font-medium">{value}</dd>
         </div>
       ))}
@@ -507,7 +507,7 @@ function SentPanel({ sent, headingRef }: { sent: Sent; headingRef: RefObject<HTM
   return (
     <section
       aria-labelledby="request-sent-heading"
-      className="mt-6 rounded-md border border-l-4 border-(--color-border) border-l-(--color-success) bg-(--color-surface) p-5"
+      className="mt-6 rounded-md border border-l-4 border-border border-l-success bg-surface p-5"
     >
       <h2
         id="request-sent-heading"
@@ -515,7 +515,7 @@ function SentPanel({ sent, headingRef }: { sent: Sent; headingRef: RefObject<HTM
         tabIndex={-1}
         className={cn("flex items-start gap-2 rounded-sm text-xl font-semibold", focusRing)}
       >
-        <CheckCircle2 aria-hidden="true" className="mt-1 size-5 shrink-0 text-(--color-success)" />
+        <CheckCircle2 aria-hidden="true" className="mt-1 size-5 shrink-0 text-success" />
         <span className="min-w-0">Request sent</span>
       </h2>
 
@@ -544,7 +544,7 @@ function SentPanel({ sent, headingRef }: { sent: Sent; headingRef: RefObject<HTM
         />
       </div>
 
-      <p className="mt-4 text-sm text-(--color-text-muted)">
+      <p className="mt-4 text-sm text-muted-foreground">
         No units are reserved yet. The bank reserves them when it approves.
       </p>
 

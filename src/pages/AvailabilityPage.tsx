@@ -148,7 +148,7 @@ export default function AvailabilityPage() {
   return (
     <>
       <h1 className="text-2xl font-semibold tracking-tight">Find blood</h1>
-      <p className="mt-2 text-(--color-text-muted)">Banks with available units, by blood type and component.</p>
+      <p className="mt-2 text-muted-foreground">Banks with available units, by blood type and component.</p>
 
       <section aria-labelledby="availability-filters-heading" className="mt-6">
         <h2 id="availability-filters-heading" className="sr-only">
@@ -179,7 +179,7 @@ export default function AvailabilityPage() {
         </div>
 
         {bankFiltersFailed && (
-          <p className="mt-3 flex flex-wrap items-center gap-x-2 text-sm text-(--color-text-muted)">
+          <p className="mt-3 flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
             <span>Bank and area filters aren't available right now. You can still search by blood type.</span>
             <Button variant="ghost" className="min-h-11" onClick={banks.reload}>
               Load banks again
@@ -188,7 +188,7 @@ export default function AvailabilityPage() {
         )}
 
         <div className="mt-3 flex min-h-11 flex-wrap items-center justify-between gap-x-4 gap-y-2">
-          <p className="text-sm text-(--color-text-muted)">{availability.data?.matching ?? ""}</p>
+          <p className="text-sm text-muted-foreground">{availability.data?.matching ?? ""}</p>
           {hasAnyParam && (
             <Button variant="ghost" className="min-h-11" onClick={clearFilters}>
               Clear filters{activeCount > 0 ? ` (${activeCount})` : ""}
@@ -249,7 +249,7 @@ function resultsMessage(data: Availability): string {
 function ComputedAt({ computedAt }: { computedAt: string }) {
   const now = useNow(TICK_MS);
   return (
-    <p className="text-sm text-(--color-text-muted)">
+    <p className="text-sm text-muted-foreground">
       Figures computed at <time dateTime={computedAt}>{formatTime(computedAt)}</time> ({timeAgo(computedAt, now)})
     </p>
   );
@@ -335,7 +335,7 @@ function RequestLink({ row }: { row: AvailabilityRow }) {
 function AvailabilityTable({ rows, canRequest }: { rows: AvailabilityRow[]; canRequest: boolean }) {
   const headings = ["Bank", "Group", "Component", "Units available", "Earliest expiry"];
   return (
-    <div className="hidden overflow-x-auto rounded-md border border-(--color-border) md:block">
+    <div className="hidden overflow-x-auto rounded-md border border-border md:block">
       <table className="w-full text-left text-sm">
         <caption className="sr-only">Available units by bank, blood type and component</caption>
         <thead className="bg-(--color-surface-sunken)">
@@ -354,10 +354,10 @@ function AvailabilityTable({ rows, canRequest }: { rows: AvailabilityRow[]; canR
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={rowKey(row)} className="border-t border-(--color-border)">
+            <tr key={rowKey(row)} className="border-t border-border">
               <td className="px-4 py-3">
                 <span className="block font-medium wrap-break-word">{row.bank.name}</span>
-                <span className="block text-(--color-text-muted)">{row.bank.area}</span>
+                <span className="block text-muted-foreground">{row.bank.area}</span>
               </td>
               <td className="px-4 py-3">{bloodTypeLabel(row.bloodGroup, row.rhesus)}</td>
               <td className="px-4 py-3">{COMPONENT_LABELS[row.component]}</td>
@@ -381,17 +381,17 @@ function AvailabilityCards({ rows, canRequest }: { rows: AvailabilityRow[]; canR
   return (
     <ul className="flex flex-col gap-3 md:hidden">
       {rows.map((row) => (
-        <li key={rowKey(row)} className="rounded-md border border-(--color-border) bg-(--color-surface) p-4">
+        <li key={rowKey(row)} className="rounded-md border border-border bg-surface p-4">
           <h3 className="font-semibold wrap-break-word">{row.bank.name}</h3>
-          <p className="text-sm text-(--color-text-muted)">{row.bank.area}</p>
+          <p className="text-sm text-muted-foreground)">{row.bank.area}</p>
           <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-            <dt className="text-(--color-text-muted)">Group</dt>
+            <dt className="text-muted-foreground">Group</dt>
             <dd>{bloodTypeLabel(row.bloodGroup, row.rhesus)}</dd>
-            <dt className="text-(--color-text-muted)">Component</dt>
+            <dt className="text-muted-foreground">Component</dt>
             <dd>{COMPONENT_LABELS[row.component]}</dd>
-            <dt className="text-(--color-text-muted)">Units available</dt>
+            <dt className="text-muted-foreground">Units available</dt>
             <dd className="tabular-nums">{row.availableUnits}</dd>
-            <dt className="text-(--color-text-muted)">Earliest expiry</dt>
+            <dt className="text-muted-foreground">Earliest expiry</dt>
             <dd>{formatDate(row.earliestExpiryDate)}</dd>
           </dl>
           {canRequest && (

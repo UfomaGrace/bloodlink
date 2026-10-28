@@ -3,6 +3,7 @@ import {
   bloodTypeLabel,
   COMPONENT_LABELS,
   COMPONENT_OPTIONS,
+  durationLabel,
   formatDate,
   formatDateTime,
   formatTime,
@@ -131,13 +132,32 @@ describe("reservation statuses", () => {
 describe("historyEventLabel", () => {
   it("uses the known wording", () => {
     expect(historyEventLabel("CREATED")).toBe("Request sent");
-    expect(historyEventLabel("HOLD_LAPSED")).toBe("Hold lapsed, units released");
+    expect(historyEventLabel("HOLD_LAPSED")).toBe("Hold lapsed, units returned to stock");
+    expect(historyEventLabel("ISSUE_REVERSED")).toBe("Issue reversed");
   });
 
   it("turns an unknown event into readable words", () => {
     expect(historyEventLabel("UNITS_RELEASED")).toBe("Units released");
     expect(historyEventLabel("toString")).toBe("Tostring");
     expect(historyEventLabel("")).toBe("");
+  });
+});
+
+describe("durationLabel", () => {
+  const MIN = 60_000;
+
+  it("shows hours and minutes, rounded down to the minute", () => {
+    expect(durationLabel(72 * MIN + 59_000)).toBe("1h 12m");
+    expect(durationLabel(45 * MIN)).toBe("45m");
+    expect(durationLabel(120 * MIN)).toBe("2h");
+    expect(durationLabel(MIN)).toBe("1m");
+  });
+
+  it("says less than a minute for the last minute, and nothing once time is up", () => {
+    expect(durationLabel(59_000)).toBe("less than a minute");
+    expect(durationLabel(0)).toBe("");
+    expect(durationLabel(-5_000)).toBe("");
+    expect(durationLabel(Number.NaN)).toBe("");
   });
 });
 

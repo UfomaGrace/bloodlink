@@ -100,10 +100,11 @@ export const HISTORY_EVENT_LABELS: Readonly<Record<string, string>> = {
   CREATED: "Request sent",
   APPROVED: "Approved, units reserved",
   DECLINED: "Declined",
-  CANCELLED: "Cancelled",
-  FULFILLED: "Fulfilled",
-  ISSUED: "Units issued",
-  HOLD_LAPSED: "Hold lapsed, units released",
+  CANCELLED: "Cancelled by the hospital",
+  FULFILLED: "Fulfilled, all units issued",
+  ISSUED: "Unit issued",
+  ISSUE_REVERSED: "Issue reversed",
+  HOLD_LAPSED: "Hold lapsed, units returned to stock",
   UNIT_EXPIRED: "A reserved unit expired",
 };
 
@@ -183,6 +184,17 @@ const DATE_TIME_FORMAT = new Intl.DateTimeFormat("en-GB", {
 export function formatDateTime(isoDateTime: string): string {
   const time = Date.parse(isoDateTime);
   return Number.isNaN(time) ? isoDateTime : DATE_TIME_FORMAT.format(time);
+}
+
+/** Time left, to the minute: "1h 12m", "45m", "2h", "less than a minute". Nothing left → "". */
+export function durationLabel(ms: number): string {
+  if (!(ms > 0)) return "";
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return "less than a minute";
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (hours === 0) return `${rest}m`;
+  return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
 }
 
 /**

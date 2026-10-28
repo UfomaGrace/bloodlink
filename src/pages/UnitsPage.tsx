@@ -124,7 +124,7 @@ export default function UnitsPage() {
           </Link>
         )}
       </div>
-      <p className="mt-2 text-(--color-text-muted)">Soonest expiry first.</p>
+      <p className="mt-2 text-muted-foreground">Soonest expiry first.</p>
 
       <section aria-labelledby="unit-filters-heading" className="mt-6">
         <h2 id="unit-filters-heading" className="sr-only">
@@ -143,7 +143,7 @@ export default function UnitsPage() {
         </div>
         <div className="mt-3 flex min-h-11 flex-wrap items-center justify-between gap-x-4 gap-y-2">
           {/* Always rendered: a live region must exist before its text changes to be announced. */}
-          <p aria-live="polite" aria-atomic="true" className="text-sm text-(--color-text-muted)">
+          <p aria-live="polite" aria-atomic="true" className="text-sm text-muted-foreground">
             {units.data && !units.loading ? showingMessage(units.data) : ""}
           </p>
           {activeCount > 0 && (
@@ -261,7 +261,7 @@ function Results({
         <Button variant="secondary" className="min-h-11" disabled={data.page <= 0} onClick={() => onPage(data.page - 1)}>
           Previous
         </Button>
-        <p className="text-sm text-(--color-text-muted)">
+        <p className="text-sm text-muted-foreground">
           Page {data.page + 1} of {lastPage + 1}
         </p>
         <Button
@@ -284,7 +284,7 @@ function StateBadge({ unit }: { unit: Unit }) {
 /** md and up. */
 function UnitTable({ units }: { units: Unit[] }) {
   return (
-    <div className="hidden overflow-x-auto rounded-md border border-(--color-border) md:block">
+    <div className="hidden overflow-x-auto rounded-md border border-border md:block">
       <table className="w-full text-left text-sm">
         <caption className="sr-only">Units, soonest expiry first</caption>
         <thead className="bg-(--color-surface-sunken)">
@@ -298,7 +298,7 @@ function UnitTable({ units }: { units: Unit[] }) {
         </thead>
         <tbody>
           {units.map((unit) => (
-            <tr key={unit.id} className="border-t border-(--color-border)">
+            <tr key={unit.id} className="border-t border-border">
               <td className="px-4 py-3 font-medium wrap-break-word">{unit.reference}</td>
               <td className="px-4 py-3">{bloodTypeLabel(unit.bloodGroup, unit.rhesus)}</td>
               <td className="px-4 py-3">{COMPONENT_LABELS[unit.component]}</td>
@@ -320,19 +320,19 @@ function UnitCards({ units }: { units: Unit[] }) {
   return (
     <ul className="flex flex-col gap-3 md:hidden">
       {units.map((unit) => (
-        <li key={unit.id} className="rounded-md border border-(--color-border) bg-(--color-surface) p-4">
+        <li key={unit.id} className="rounded-md border border-border bg-surface p-4">
           <div className="flex items-start justify-between gap-3">
             <h3 className="min-w-0 font-semibold wrap-break-word">{unit.reference}</h3>
             <StateBadge unit={unit} />
           </div>
           <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-            <dt className="text-(--color-text-muted)">Blood type</dt>
+            <dt className="text-muted-foreground">Blood type</dt>
             <dd>{bloodTypeLabel(unit.bloodGroup, unit.rhesus)}</dd>
-            <dt className="text-(--color-text-muted)">Component</dt>
+            <dt className="text-muted-foreground">Component</dt>
             <dd>{COMPONENT_LABELS[unit.component]}</dd>
-            <dt className="text-(--color-text-muted)">Collected</dt>
+            <dt className="text-muted-foreground">Collected</dt>
             <dd>{formatDate(unit.collectionDate)}</dd>
-            <dt className="text-(--color-text-muted)">Expires</dt>
+            <dt className="text-muted-foreground">Expires</dt>
             <dd>{formatDate(unit.expiryDate)}</dd>
           </dl>
         </li>

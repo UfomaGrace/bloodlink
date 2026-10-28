@@ -8,7 +8,12 @@
 //   both for the administrator) and links to /requests/:requestId.
 // - States: loading, error (+ Retry), empty (per role / no matches), list.
 // - Wide screens get a table; phones get stacked cards. Both read from the same data.
+// - "Hold ends" counts down to the soonest running hold, and turns to a warning under an hour
+//   (lib/holds HOLD_SOON_MS). When a hold passes, the row shows it lapsed straight away and the
+//   list reloads once, quietly: the rows stay on screen instead of the loading skeleton.
 
+import { Clock } from "lucide-react";
+import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { api } from "../api/endpoints";
 import type { BloodRequest, BloodRequestPage, Role } from "../api/types";
@@ -17,7 +22,10 @@ import { RequestStateBadge } from "../components/RequestStateBadge";
 import { UrgencyLabel } from "../components/UrgencyLabel";
 import { UrlFilterSelect } from "../components/UrlFilterSelect";
 import { useAsync, type AsyncResult } from "../hooks/useAsync";
+import { useHoldClock } from "../hooks/useHoldClock";
+import { HOLD_SOON_MS, nextHoldEnd, withPassedHolds } from "../lib/holds";
 import {
+  durationLabel,
   formatDateTime,
   isKeyOf,
   REQUEST_STATE_LABELS,
@@ -85,6 +93,21 @@ export default function RequestsPage() {
     [state, page],
   );
 
+  // The list a hold-passed reload started from. While that reload runs, the rows stay up.
+  const [quietReload, setQuietReload] = useState<{ from: BloodRequestPage | null; state?: string; page: number } | null>(
+    null,
+  );
+  const refreshing =
+    requests.loading &&
+    quietReload !== null &&
+    quietReload.from === requests.data &&
+    quietReload.state === state &&
+    quietReload.page === page;
+  const now = useHoldClock(requests.data?.items.flatMap((r) => r.reservations) ?? [], () => {
+    setQuietReload({ from: requests.data, state, page });
+    requests.reload();
+  });
+
   function clearFilter() {
     setSearchParams({});
   }
@@ -120,7 +143,7 @@ export default function RequestsPage() {
         <div className="mt-3 flex min-h-11 flex-wrap items-center justify-between gap-x-4 gap-y-2">
           {/* Always rendered: a live region must exist before its text changes to be announced. */}
           <p aria-live="polite" aria-atomic="true" className="text-sm text-muted-foreground">
-            {requests.data && !requests.loading ? showingMessage(requests.data) : ""}
+            {requests.data && (!requests.loading || refreshing) ? showingMessage(requests.data) : ""}
           </p>
           {state && (
             <Button variant="ghost" className="min-h-11" onClick={clearFilter}>
@@ -136,6 +159,8 @@ export default function RequestsPage() {
         </h2>
         <Results
           requests={requests}
+          refreshing={refreshing}
+          now={now}
           role={role}
           hasFilter={state !== undefined}
           onFindBlood={() => navigate("/availability")}
@@ -156,6 +181,8 @@ function showingMessage(data: BloodRequestPage): string {
 
 function Results({
   requests,
+  refreshing,
+  now,
   role,
   hasFilter,
   onFindBlood,
@@ -163,13 +190,15 @@ function Results({
   onPage,
 }: {
   requests: AsyncResult<BloodRequestPage>;
+  refreshing: boolean;
+  now: number;
   role: Role | null;
   hasFilter: boolean;
   onFindBlood: () => void;
   onClearFilter: () => void;
   onPage: (page: number) => void;
 }) {
-  if (requests.loading) {
+  if (requests.loading && !refreshing) {
     return (
       <div className="flex flex-col gap-4">
         <p role="status" className="text-sm font-medium">
@@ -236,11 +265,12 @@ function Results({
   }
 
   const lastPage = Math.max(0, Math.ceil(data.totalItems / data.size) - 1);
+  const items = data.items.map((request) => withPassedHolds(request, now));
 
   return (
     <>
-      <RequestTable requests={data.items} role={role} />
-      <RequestCards requests={data.items} role={role} />
+      <RequestTable requests={items} role={role} now={now} />
+      <RequestCards requests={items} role={role} now={now} />
 
       <nav aria-label="Pagination" className="mt-6 flex flex-wrap items-center justify-between gap-3">
         <Button variant="secondary" className="min-h-11" disabled={data.page <= 0} onClick={() => onPage(data.page - 1)}>
@@ -266,9 +296,34 @@ function CreatedAgo({ createdAt }: { createdAt: string }) {
   return <time dateTime={createdAt}>{timeAgo(createdAt) || formatDateTime(createdAt)}</time>;
 }
 
+/** "in 1h 12m" to the soonest running hold; a warning with a clock under an hour; a dash with none. */
+function HoldEnds({ request, now }: { request: BloodRequest; now: number }) {
+  const end = nextHoldEnd(request.reservations, now);
+  if (end === null) {
+    return (
+      <span className="text-muted-foreground">
+        <span aria-hidden="true">—</span>
+        <span className="sr-only">No hold running</span>
+      </span>
+    );
+  }
+  const left = end - now;
+  const soon = left < HOLD_SOON_MS;
+  return (
+    <time
+      dateTime={new Date(end).toISOString()}
+      className={cn("inline-flex items-center gap-1 tabular-nums", soon && "font-medium text-warning")}
+    >
+      {soon && <Clock aria-hidden="true" className="size-3.5 shrink-0" />}
+      {soon && <span className="sr-only">Ends soon: </span>}
+      in {durationLabel(left)}
+    </time>
+  );
+}
+
 /** md and up. Emergency rows get a thin crimson rule on the left edge; the row itself stays white. */
-function RequestTable({ requests, role }: { requests: BloodRequest[]; role: Role | null }) {
-  const headings = ["Reference", otherPartyHeading(role), "Blood", "Urgency", "Needed by", "State", "Created"];
+function RequestTable({ requests, role, now }: { requests: BloodRequest[]; role: Role | null; now: number }) {
+  const headings = ["Reference", otherPartyHeading(role), "Blood", "Urgency", "Needed by", "State", "Hold ends", "Created"];
   return (
     <div className="hidden overflow-x-auto rounded-md border border-border bg-surface md:block">
       <table className="w-full text-left text-sm">
@@ -311,6 +366,9 @@ function RequestTable({ requests, role }: { requests: BloodRequest[]; role: Role
               <td className="px-4 py-3">
                 <RequestStateBadge state={request.state} />
               </td>
+              <td className="px-4 py-3 whitespace-nowrap">
+                <HoldEnds request={request} now={now} />
+              </td>
               <td className="px-4 py-3 whitespace-nowrap text-muted-foreground tabular-nums">
                 <CreatedAgo createdAt={request.createdAt} />
               </td>
@@ -323,7 +381,7 @@ function RequestTable({ requests, role }: { requests: BloodRequest[]; role: Role
 }
 
 /** Below md: one card per request; the heading is the link. Emergency cards get the same crimson left rule. */
-function RequestCards({ requests, role }: { requests: BloodRequest[]; role: Role | null }) {
+function RequestCards({ requests, role, now }: { requests: BloodRequest[]; role: Role | null; now: number }) {
   return (
     <ul className="flex flex-col gap-3 md:hidden">
       {requests.map((request) => (
@@ -351,6 +409,14 @@ function RequestCards({ requests, role }: { requests: BloodRequest[]; role: Role
             <dd><UrgencyLabel urgency={request.urgency} /></dd>
             <dt className="text-muted-foreground">Needed by</dt>
             <dd className="tabular-nums">{formatDateTime(request.neededBy)}</dd>
+            {nextHoldEnd(request.reservations, now) !== null && (
+              <>
+                <dt className="text-muted-foreground">Hold ends</dt>
+                <dd>
+                  <HoldEnds request={request} now={now} />
+                </dd>
+              </>
+            )}
             <dt className="text-muted-foreground">Created</dt>
             <dd className="text-muted-foreground tabular-nums">
               <CreatedAgo createdAt={request.createdAt} />

@@ -13,6 +13,13 @@
 //   dialog has handed focus back to the button that opened it.
 // - Mock only: Prism always answers APPROVED, so a checkbox can treat the request as PENDING
 //   to try the buttons. It never renders on the live API (IS_MOCK is false there).
+// - Active holds count down ("Hold ends in 1h 12m"). The moment a hold passes we show it as
+//   lapsed ourselves (the service does the same at read time), and if no unit is left on hold
+//   or issued the request shows as LAPSED too. Then we reload once, quietly, to pick up what the
+//   service recorded. A hold that is already past on arrival is shown lapsed but not reloaded
+//   for, so a clock that runs ahead of the service's can't cause a reload loop.
+// - Closed states (DECLINED, LAPSED, UNIT_EXPIRED, CANCELLED, FULFILLED) each get a banner
+//   saying in plain words what happened.
 
 import { Form, Formik, type FormikHelpers } from "formik";
 import { CheckCircle2 } from "lucide-react";
@@ -21,7 +28,7 @@ import { Link, useParams } from "react-router";
 import * as Yup from "yup";
 import { IS_MOCK, toApiError, type ApiError } from "../api/client";
 import { api } from "../api/endpoints";
-import type { BloodRequest, FieldIssue, HistoryEntry, Reservation } from "../api/types";
+import type { BloodRequest, FieldIssue, HistoryEntry, RequestState, Reservation } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { applyApiError } from "../components/form/applyApiError";
 import { FormAlert } from "../components/form/FormAlert";
@@ -29,9 +36,12 @@ import { FormikTextarea } from "../components/form/FormikTextarea";
 import { RequestStateBadge } from "../components/RequestStateBadge";
 import { UrgencyLabel } from "../components/UrgencyLabel";
 import { useAsync } from "../hooks/useAsync";
+import { useHoldClock } from "../hooks/useHoldClock";
+import { withPassedHolds } from "../lib/holds";
 import {
   bloodTypeLabel,
   COMPONENT_LABELS,
+  durationLabel,
   formatDate,
   formatDateTime,
   formatTime,
@@ -103,8 +113,11 @@ function RequestDetail({ requestId }: { requestId: string }) {
   const canDecide = role === "BANK_STAFF" || role === "ADMIN";
 
   const loaded = useAsync((signal) => api.getRequest(requestId, signal).then((res) => res.data), [requestId]);
-  // The request an action sent back. Newer than `loaded.data` until the next reload.
-  const [updated, setUpdated] = useState<BloodRequest | null>(null);
+  // The request an action sent back, and the loaded copy it replaced. It wins until a reload
+  // brings a newer copy, so a quiet reload never flashes back to the state before the action.
+  const [updated, setUpdatedState] = useState<{ request: BloodRequest; over: BloodRequest | null } | null>(null);
+  const setUpdated = (next: BloodRequest | null) =>
+    setUpdatedState(next && { request: next, over: loaded.data });
   const [notice, setNotice] = useState<Notice | null>(null);
   const [simulatePending, setSimulatePending] = useState(false);
   const [approveOpen, setApproveOpen] = useState(false);
@@ -112,9 +125,11 @@ function RequestDetail({ requestId }: { requestId: string }) {
   const [declining, setDeclining] = useState(false);
   const [declineIssues, setDeclineIssues] = useState<{ error: ApiError; issues: FieldIssue[] } | null>(null);
 
-  const fetched = updated ?? loaded.data;
+  const fetched = updated && updated.over === loaded.data ? updated.request : loaded.data;
+  const now = useHoldClock(fetched?.reservations ?? [], loaded.reload);
+  const current = fetched && withPassedHolds(fetched, now);
   const request: BloodRequest | null =
-    fetched && IS_MOCK && simulatePending ? { ...fetched, state: "PENDING" } : fetched;
+    current && IS_MOCK && simulatePending ? { ...current, state: "PENDING" } : current;
 
   function succeeded(next: BloodRequest, message: string) {
     setUpdated(next);
@@ -180,7 +195,7 @@ function RequestDetail({ requestId }: { requestId: string }) {
         <>
           <h1 className="text-2xl font-semibold tracking-tight">Request not found</h1>
           {alert && <div className="mt-4">{alert}</div>}
-          <p className="mt-2 text-(--color-text-muted)">
+          <p className="mt-2 text-muted-foreground">
             It may have been removed, or it belongs to another hospital or bank.
           </p>
           <Link to="/requests" className={cn(backLink, "mt-4")}>
@@ -231,7 +246,7 @@ function RequestDetail({ requestId }: { requestId: string }) {
         <RequestStateBadge state={request.state} />
       </div>
       {/* Shown while the request reloads after an error, so nobody acts on the old state. */}
-      <p role="status" className="mt-1 min-h-5 text-sm text-(--color-text-muted)">
+      <p role="status" className="mt-1 min-h-5 text-sm text-muted-foreground">
         {loaded.loading ? "Checking the latest state…" : ""}
       </p>
 
@@ -249,7 +264,7 @@ function RequestDetail({ requestId }: { requestId: string }) {
       )}
 
       {IS_MOCK && canDecide && (
-        <div className="mt-4 rounded-md border border-dashed border-(--color-border-input) p-3">
+        <div className="mt-4 rounded-md border border-dashed border-input p-3">
           <Checkbox
             label="Simulate pending state (mock only)"
             description="The mock always answers APPROVED. Tick this to try Approve and Decline."
@@ -263,12 +278,12 @@ function RequestDetail({ requestId }: { requestId: string }) {
       {canDecide && isPending && (
         <section
           aria-labelledby="decision-heading"
-          className="mt-6 rounded-md border border-(--color-border) bg-(--color-surface) p-4"
+          className="mt-6 rounded-md border border-border bg-surface p-4"
         >
           <h2 id="decision-heading" className="text-lg font-semibold">
             Decision
           </h2>
-          <p className="mt-1 text-sm text-(--color-text-muted)">
+          <p className="mt-1 text-sm text-muted-foreground)">
             Approving reserves {unitsLabel(request.quantity)} of {what} for {request.hospital.name}.
           </p>
           <div className="mt-4 flex flex-col gap-3 sm:flex-row">
@@ -315,17 +330,10 @@ function RequestDetail({ requestId }: { requestId: string }) {
           />
         </div>
 
-        {request.state === "DECLINED" && (
-          <div className="mt-4 rounded-md border border-l-4 border-(--color-border) border-l-(--color-danger) bg-(--color-surface) p-4 text-sm">
-            <h3 className="font-semibold">Reason for declining</h3>
-            <p className="mt-1 whitespace-pre-line wrap-break-word">
-              {request.declineReason || "The bank did not give a reason."}
-            </p>
-          </div>
-        )}
+        <OutcomeBanner request={request} />
       </section>
 
-      {request.reservations.length > 0 && <Reservations reservations={request.reservations} />}
+      {request.reservations.length > 0 && <Reservations reservations={request.reservations} now={now} />}
 
       <History history={request.history} />
 
@@ -386,23 +394,23 @@ function ResultAlert({ notice }: { notice: Notice }) {
       role="alert"
       tabIndex={-1}
       className={cn(
-        "rounded-md border border-l-4 border-(--color-border) bg-(--color-surface) p-4 text-sm",
-        success ? "border-l-(--color-success)" : "border-l-(--color-danger)",
+        "rounded-md border border-l-4 border-border bg-surface p-4 text-sm",
+        success ? "border-l-success" : "border-l-error",
         focusRing,
       )}
     >
       {success ? (
         <p className="flex items-start gap-2 font-medium">
-          <CheckCircle2 aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-(--color-success)" />
+          <CheckCircle2 aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-success" />
           <span className="min-w-0">{notice.message}</span>
         </p>
       ) : (
         <>
-          <p className="font-medium text-(--color-danger)">
+          <p className="font-medium text-error">
             <span aria-hidden="true">! </span>
             {notice.error.message}
           </p>
-          <p className="mt-2 break-all text-(--color-text-muted)">Reference: {notice.error.requestId}</p>
+          <p className="mt-2 break-all text-muted-foreground">Reference: {notice.error.requestId}</p>
         </>
       )}
     </div>
@@ -414,7 +422,7 @@ function DetailList({ details }: { details: { term: string; value: ReactNode }[]
     <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
       {details.map(({ term, value }) => (
         <div key={term} className="contents">
-          <dt className="text-(--color-text-muted)">{term}</dt>
+          <dt className="text-muted-foreground">{term}</dt>
           <dd className="min-w-0 wrap-break-word font-medium">{value}</dd>
         </div>
       ))}
@@ -422,13 +430,76 @@ function DetailList({ details }: { details: { term: string; value: ReactNode }[]
   );
 }
 
-function Reservations({ reservations }: { reservations: Reservation[] }) {
+type Outcome = { title: string; body: string; border: string };
+
+// What each closed state means, in plain words. DECLINED's body is the bank's reason instead.
+const OUTCOMES: Partial<Record<RequestState, Outcome>> = {
+  DECLINED: { title: "Reason for declining", body: "The bank did not give a reason.", border: "border-l-(--color-danger)" },
+  LAPSED: {
+    title: "Hold lapsed",
+    body: "The hold ended before the units were issued. They have returned to stock.",
+    border: "border-l-(--color-warning)",
+  },
+  UNIT_EXPIRED: {
+    title: "A reserved unit expired",
+    body: "A reserved unit passed its expiry date before it was issued, so this request was closed. Expired blood is never issued. Send a new request if blood is still needed.",
+    border: "border-l-(--color-danger)",
+  },
+  CANCELLED: {
+    title: "Request cancelled",
+    body: "The hospital cancelled this request. Any units held for it have returned to stock.",
+    border: "border-l-(--color-border-input)",
+  },
+  FULFILLED: {
+    title: "Request fulfilled",
+    body: "Every reserved unit has been issued to the hospital.",
+    border: "border-l-(--color-success)",
+  },
+};
+
+function OutcomeBanner({ request }: { request: BloodRequest }) {
+  const outcome = OUTCOMES[request.state];
+  if (!outcome) return null;
+  const body = (request.state === "DECLINED" && request.declineReason) || outcome.body;
+  return (
+    <div
+      className={cn(
+        "mt-4 rounded-md border border-l-4 border-border bg-surface p-4 text-sm",
+        outcome.border,
+      )}
+    >
+      <h3 className="font-semibold">{outcome.title}</h3>
+      <p className="mt-1 whitespace-pre-line wrap-break-word">{body}</p>
+    </div>
+  );
+}
+
+function HoldCell({ reservation, now }: { reservation: Reservation; now: number }) {
+  const left = durationLabel(Date.parse(reservation.holdExpiresAt) - now);
+  if (reservation.status === "ACTIVE" && left) {
+    return (
+      <>
+        <span className="font-medium whitespace-nowrap">Hold ends in {left}</span>
+        <span className="block text-muted-foreground">
+          at <time dateTime={reservation.holdExpiresAt}>{holdTimeLabel(reservation.holdExpiresAt)}</time>
+        </span>
+      </>
+    );
+  }
+  return (
+    <time dateTime={reservation.holdExpiresAt}>
+      Held until {holdTimeLabel(reservation.holdExpiresAt)}
+    </time>
+  );
+}
+
+function Reservations({ reservations, now }: { reservations: Reservation[]; now: number }) {
   return (
     <section aria-labelledby="reservations-heading" className="mt-8">
       <h2 id="reservations-heading" className="text-lg font-semibold">
         Reserved units
       </h2>
-      <div className="mt-3 overflow-x-auto rounded-md border border-(--color-border)">
+      <div className="mt-3 overflow-x-auto rounded-md border border-border">
         <table className="w-full text-left text-sm">
           <caption className="sr-only">Units reserved for this request</caption>
           <thead className="bg-(--color-surface-sunken)">
@@ -442,7 +513,7 @@ function Reservations({ reservations }: { reservations: Reservation[] }) {
           </thead>
           <tbody>
             {reservations.map((reservation) => (
-              <tr key={reservation.id} className="border-t border-(--color-border)">
+              <tr key={reservation.id} className="border-t border-border">
                 <td className="px-4 py-3 font-medium wrap-break-word">{reservation.unit.reference}</td>
                 <td className="px-4 py-3 whitespace-nowrap">{formatDate(reservation.unit.expiryDate)}</td>
                 <td className="px-4 py-3">
@@ -451,10 +522,7 @@ function Reservations({ reservations }: { reservations: Reservation[] }) {
                   </StatusBadge>
                 </td>
                 <td className="px-4 py-3">
-                  <time dateTime={reservation.holdExpiresAt}>
-                    {reservation.status === "ACTIVE" ? "Hold ends at " : "Held until "}
-                    {holdTimeLabel(reservation.holdExpiresAt)}
-                  </time>
+                  <HoldCell reservation={reservation} now={now} />
                 </td>
               </tr>
             ))}
@@ -475,17 +543,17 @@ function History({ history }: { history: HistoryEntry[] }) {
         History
       </h2>
       {entries.length === 0 ? (
-        <p className="mt-2 text-sm text-(--color-text-muted)">Nothing has happened yet.</p>
+        <p className="mt-2 text-sm text-muted-foreground">Nothing has happened yet.</p>
       ) : (
-        <ol className="mt-3 flex flex-col gap-4 border-l-2 border-(--color-border) pl-4">
+        <ol className="mt-3 flex flex-col gap-4 border-l-2 border-border pl-4">
           {entries.map((entry, i) => (
             <li key={`${entry.at}-${entry.event}-${i}`} className="relative text-sm">
               <span
                 aria-hidden="true"
-                className="absolute top-1.5 -left-[calc(1rem+5px)] size-2 rounded-full bg-(--color-text-muted)"
+                className="absolute top-1.5 -left-5.25 size-2 rounded-full bg-muted-foreground"
               />
               <p className="font-medium">{historyEventLabel(entry.event)}</p>
-              <p className="text-(--color-text-muted)">
+              <p className="text-muted-foreground">
                 <time dateTime={entry.at}>{formatDateTime(entry.at)}</time> · {entry.actor}
               </p>
               {entry.note && <p className="mt-1 whitespace-pre-line wrap-break-word">{entry.note}</p>}

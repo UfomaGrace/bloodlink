@@ -36,7 +36,6 @@ There is no sign-up, because the API contract only offers `POST /sessions`. Sign
 - **Mock mode** (`VITE_MOCK=true`) is for local development only. It adds:
   - a role picker on the sign-in page
   - a "simulate pending" switch
-  - a box for forcing error responses
 
   None of these appear on the live site.
 
