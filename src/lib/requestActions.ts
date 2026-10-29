@@ -24,6 +24,23 @@ export function actsForBank(request: BloodRequest, viewer: Viewer): boolean {
   return viewer.role === "BANK_STAFF" && viewer.organisationId !== null && viewer.organisationId === request.bank.id;
 }
 
+/** Staff of the hospital that made the request. Not the administrator: the contract gives them 403. */
+export function isRequestingHospital(request: BloodRequest, viewer: Viewer): boolean {
+  return (
+    viewer.role === "HOSPITAL_STAFF" && viewer.organisationId !== null && viewer.organisationId === request.hospital.id
+  );
+}
+
+/** Closed: nothing more can happen to it. Only PENDING and APPROVED are open. */
+export function isClosed(state: RequestState): boolean {
+  return state !== "PENDING" && state !== "APPROVED";
+}
+
+/** Cancel: the requesting hospital only, while the request is not closed. */
+export function canCancel(request: BloodRequest, viewer: Viewer): boolean {
+  return !isClosed(request.state) && isRequestingHospital(request, viewer);
+}
+
 /** Approve or decline: the addressed bank or the administrator, while the request is PENDING. */
 export function canDecide(request: BloodRequest, viewer: Viewer): boolean {
   return request.state === "PENDING" && actsForBank(request, viewer);
@@ -70,9 +87,10 @@ export function issuedUnitReferences(request: BloodRequest): string[] {
 
 /**
  * After a lost connection we can't tell whether the action happened, so we reload and say what
- * the request shows now. `state` is null when that reload failed too.
+ * the request shows now. `state` is null when that reload failed too. `subject` names the request
+ * where there are several ("Request REQ-2026-000123").
  */
-export function unconfirmedMessage(state: RequestState | null): string {
+export function unconfirmedMessage(state: RequestState | null, subject = "The request"): string {
   if (state === null) return "We couldn't confirm whether that went through, or check the latest state. Check the request again before trying once more.";
-  return `We couldn't confirm. The request now shows as ${REQUEST_STATE_LABELS[state]}.`;
+  return `We couldn't confirm. ${subject} now shows as ${REQUEST_STATE_LABELS[state]}.`;
 }

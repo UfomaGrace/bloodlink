@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { BloodRequest, Organisation, RequestState, Reservation, Session } from "../api/types";
 import {
   actsForBank,
+  canCancel,
   canDecide,
   canIssue,
+  isClosed,
   expiredHeldUnits,
   expiredUnitsMessage,
   issuedUnitReferences,
@@ -102,6 +104,42 @@ describe("canDecide", () => {
   });
 });
 
+describe("isClosed", () => {
+  it("is false only for PENDING and APPROVED", () => {
+    expect(isClosed("PENDING")).toBe(false);
+    expect(isClosed("APPROVED")).toBe(false);
+    for (const state of ["DECLINED", "CANCELLED", "FULFILLED", "LAPSED", "UNIT_EXPIRED"] as const) {
+      expect(isClosed(state)).toBe(true);
+    }
+  });
+});
+
+describe("canCancel", () => {
+  it("lets the requesting hospital cancel a PENDING or APPROVED request", () => {
+    expect(canCancel(request("PENDING"), hospitalStaff)).toBe(true);
+    expect(canCancel(approved(reservation("U1")), hospitalStaff)).toBe(true);
+  });
+
+  // Fails if the organisation comparison is removed and the role alone decides.
+  it("never lets another hospital cancel", () => {
+    const otherHospital: Viewer = { role: "HOSPITAL_STAFF", organisationId: "hospital-2" };
+    expect(canCancel(request("PENDING"), otherHospital)).toBe(false);
+    expect(canCancel(request("PENDING"), { role: "HOSPITAL_STAFF", organisationId: null })).toBe(false);
+  });
+
+  it("is false for the bank, the administrator and donors", () => {
+    expect(canCancel(request("PENDING"), ourBankStaff)).toBe(false);
+    expect(canCancel(request("PENDING"), admin)).toBe(false);
+    expect(canCancel(request("PENDING"), { role: "DONOR", organisationId: null })).toBe(false);
+  });
+
+  it("is false once the request is closed", () => {
+    for (const state of ["DECLINED", "CANCELLED", "FULFILLED", "LAPSED", "UNIT_EXPIRED"] as const) {
+      expect(canCancel(request(state), hospitalStaff)).toBe(false);
+    }
+  });
+});
+
 describe("canIssue", () => {
   it("lets the addressed bank and the administrator issue an APPROVED request with running holds", () => {
     const req = approved(reservation("U1"), reservation("U2"));
@@ -193,6 +231,10 @@ describe("unconfirmedMessage", () => {
   it("says what the request shows now", () => {
     expect(unconfirmedMessage("FULFILLED")).toBe("We couldn't confirm. The request now shows as Fulfilled.");
     expect(unconfirmedMessage("APPROVED")).toBe("We couldn't confirm. The request now shows as Approved.");
+  });
+
+  it("names the request when there are several on screen", () => {
+    expect(unconfirmedMessage("CANCELLED", "Request REQ-1")).toBe("We couldn't confirm. Request REQ-1 now shows as Cancelled.");
   });
 
   it("asks the user to check again when the reload failed too", () => {

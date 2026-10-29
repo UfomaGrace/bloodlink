@@ -22,6 +22,9 @@ const LOCAL_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
 export const MAX_REQUEST_QUANTITY = 20;
 export const DECLINE_REASON_MIN = 3;
 export const DECLINE_REASON_MAX = 500;
+// Cancellation.reason in the contract: 3–500 characters.
+export const CANCEL_REASON_MIN = 3;
+export const CANCEL_REASON_MAX = 500;
 
 /** The given day (default today, in the user's time zone) as "YYYY-MM-DD". */
 export function todayIso(now: Date = new Date()): string {
@@ -121,3 +124,11 @@ export const declineReason = () =>
     .required("Enter a reason for declining.")
     .min(DECLINE_REASON_MIN, `Write at least ${DECLINE_REASON_MIN} characters.`)
     .max(DECLINE_REASON_MAX, `The reason can be at most ${DECLINE_REASON_MAX} characters.`);
+
+/** Why the hospital cancels its request: 3–500 characters after trimming (contract Cancellation). */
+export const cancelReason = () =>
+  Yup.string()
+    .trim()
+    .required("Enter a reason for cancelling.")
+    .min(CANCEL_REASON_MIN, `Write at least ${CANCEL_REASON_MIN} characters.`)
+    .max(CANCEL_REASON_MAX, `The reason can be at most ${CANCEL_REASON_MAX} characters.`);

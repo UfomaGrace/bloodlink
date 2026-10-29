@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import * as Yup from "yup";
 import {
   bloodGroup,
+  cancelReason,
   dateAfter,
   dateNotInFuture,
   declineReason,
@@ -148,5 +149,19 @@ describe("declineReason", () => {
     expect(errorOf(declineReason(), "   ")).toBe("Enter a reason for declining.");
     expect(errorOf(declineReason(), "  no  ")).toBe("Write at least 3 characters.");
     expect(errorOf(declineReason(), "A".repeat(501))).toBe("The reason can be at most 500 characters.");
+  });
+});
+
+describe("cancelReason", () => {
+  it("accepts 3 to 500 characters", () => {
+    expect(errorOf(cancelReason(), "Gone")).toBeNull();
+    expect(errorOf(cancelReason(), "A".repeat(500))).toBeNull();
+  });
+
+  it("rejects empty, blank, too short and too long", () => {
+    expect(errorOf(cancelReason(), "")).toBe("Enter a reason for cancelling.");
+    expect(errorOf(cancelReason(), "   ")).toBe("Enter a reason for cancelling.");
+    expect(errorOf(cancelReason(), "  no  ")).toBe("Write at least 3 characters.");
+    expect(errorOf(cancelReason(), "A".repeat(501))).toBe("The reason can be at most 500 characters.");
   });
 });

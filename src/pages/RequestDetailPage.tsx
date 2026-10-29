@@ -1,5 +1,9 @@
 // RequestDetailPage (/requests/:requestId): one request, its reserved units and its history.
 //
+// Cancel is this app's one optimistic update (lib/optimisticCancel): it is the hospital's own
+// request, it is low risk (a refusal changes nothing on the service), and it is easy to undo on
+// screen (the request we showed before is still underneath). Every other action waits for the service.
+//
 // - GET /requests/{id}. 404 means "not found or not yours", so both get "Request not found".
 // - Staff of the addressed bank and the administrator see Approve and Decline while the request is
 //   PENDING (lib/requestActions canDecide). Staff of another bank never see them.
@@ -12,6 +16,15 @@
 //   issued) shows the message and reloads. If a held unit has passed its expiry date, the Issue
 //   section says which one instead of offering the button (worked out from expiryDate, and
 //   labelled so: UnitSummary has no state field yet).
+// - Staff of the requesting hospital (only them, not the administrator) see "Cancel request" while
+//   the request is PENDING or APPROVED (canCancel). A reason (lib/validation cancelReason) →
+//   POST /requests/{id}/cancellation. The dialog closes and the request shows CANCELLED at once.
+//     Confirmed → the service's copy and a success message.
+//     Refused (409 REQUEST_CLOSED, 403, 404, anything else) → the request is put back as it was,
+//       the service's message shows here and in an error Toast with "Reload", and after 409 / 403 /
+//       404 the request is reloaded. In the mock the simulated state stays, so the rollback shows.
+//     422 → put back, and the dialog reopens with the reason as typed and the field errors.
+//     Lost connection → CANCELLED stays until the reload answers, then we say what it shows.
 // - While an action is in flight, the status line under the heading says so ("Recording issue…"),
 //   because the busy button only shows a spinner.
 // - Issue is not idempotent and takes no Idempotency-Key yet. On TIMEOUT or NETWORK_ERROR we
@@ -47,6 +60,7 @@ import { useAuth } from "../auth/AuthContext";
 import { applyApiError } from "../components/form/applyApiError";
 import { FormAlert } from "../components/form/FormAlert";
 import { FormikTextarea } from "../components/form/FormikTextarea";
+import { CancelRequestDialog, cancelReopened, type CancelReopened } from "../components/CancelRequestDialog";
 import { MockControls } from "../components/MockControls";
 import { RequestStateBadge } from "../components/RequestStateBadge";
 import { ResultAlert, type Notice } from "../components/ResultAlert";
@@ -68,7 +82,17 @@ import {
 } from "../lib/labels";
 import { simulateRequest, type SimulatedState } from "../lib/mockSimulation";
 import {
+  cancelOutcome,
+  endCancel,
+  NO_CANCELS,
+  reloadsAfterRefusal,
+  startCancel,
+  withCancels,
+  type CancelOverlay,
+} from "../lib/optimisticCancel";
+import {
   actsForBank,
+  canCancel,
   canDecide,
   canIssue,
   expiredHeldUnits,
@@ -84,6 +108,7 @@ import { ConfirmDialog, Dialog } from "../shared/ui/dialog";
 import { ErrorState } from "../shared/ui/error-state";
 import { Skeleton } from "../shared/ui/skeleton";
 import { StatusBadge } from "../shared/ui/status-badge";
+import { useToast } from "../shared/ui/toast";
 
 const focusRing =
   "focus-visible:[outline:var(--focus-ring-width)_solid_var(--color-focus)] focus-visible:outline-offset-(--focus-ring-offset)";
@@ -140,6 +165,7 @@ export default function RequestDetailPage() {
 function RequestDetail({ requestId }: { requestId: string }) {
   const { session } = useAuth();
   const viewer = viewerOf(session);
+  const { toast } = useToast();
 
   const loaded = useAsync((signal) => api.getRequest(requestId, signal).then((res) => res.data), [requestId]);
   // The request an action sent back, and the loaded copy it replaced. It wins until a reload
@@ -157,18 +183,27 @@ function RequestDetail({ requestId }: { requestId: string }) {
   const [issueOpen, setIssueOpen] = useState(false);
   // What is in flight, for the status line ("Recording issue…"). Null when nothing is.
   const [inFlight, setInFlight] = useState<string | null>(null);
-  // Set after a lost connection: the copy we had when the reload started.
-  const [unconfirmed, setUnconfirmed] = useState<{ from: BloodRequest | null } | null>(null);
+  // Set after a lost connection: the copy we had when the reload started, and whether a cancel
+  // stays on screen until then.
+  const [unconfirmed, setUnconfirmed] = useState<{ from: BloodRequest | null; endsCancel: boolean } | null>(null);
+  // The optimistic cancel (lib/optimisticCancel). Holds this request's id while it is shown CANCELLED.
+  const [cancels, setCancels] = useState<CancelOverlay>(NO_CANCELS);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelRefusedReason, setCancelRefusedReason] = useState<CancelReopened | null>(null);
 
   const fetched = updated && updated.over === loaded.data ? updated.request : loaded.data;
   const shown = fetched && IS_MOCK && simulated ? simulateRequest(fetched, simulated.state, simulated.at) : fetched;
   const now = useHoldClock(shown?.reservations ?? [], loaded.reload);
-  const request = shown && withPassedHolds(shown, now);
+  // As the service last told us, and as the screen shows it (CANCELLED while a cancel is unconfirmed).
+  const confirmed = shown && withPassedHolds(shown, now);
+  const request = confirmed && withCancels(confirmed, cancels);
+  const cancelling = cancels.has(requestId);
 
   // After a lost connection, once the reload has answered, say what the request shows now.
   if (unconfirmed && !loaded.loading && (loaded.data !== unconfirmed.from || loaded.error)) {
     setUnconfirmed(null);
-    setNotice({ tone: "info", message: unconfirmedMessage(loaded.error ? null : (request?.state ?? null)) });
+    if (unconfirmed.endsCancel) setCancels((overlay) => endCancel(overlay, requestId));
+    setNotice({ tone: "info", message: unconfirmedMessage(loaded.error ? null : (confirmed?.state ?? null)) });
   }
 
   /** Mock only: a "Simulate state" choice. Its dates count from the moment it is picked. */
@@ -194,12 +229,56 @@ function RequestDetail({ requestId }: { requestId: string }) {
   }
 
   /** A lost connection: we can't tell whether it happened. No "failed", no retry: reload and report. */
-  function checkAfterLostConnection() {
+  function checkAfterLostConnection(endsCancel = false) {
     setSimulatedState(null);
     setNotice(null);
     setUpdated(null);
-    setUnconfirmed({ from: loaded.data });
+    setUnconfirmed({ from: loaded.data, endsCancel });
     loaded.reload();
+  }
+
+  function openCancel() {
+    setCancelRefusedReason(null);
+    setCancelOpen(true);
+  }
+
+  // Optimistic: closes the dialog and shows CANCELLED before the service answers.
+  async function cancel(reason: string) {
+    setCancelOpen(false);
+    setNotice(null);
+    setCancels((overlay) => startCancel(overlay, requestId));
+    setInFlight("Cancelling request…");
+    try {
+      const res = await api.cancelRequest(requestId, { reason });
+      setCancels((overlay) => endCancel(overlay, requestId));
+      succeeded(res.data, "Request cancelled. Any units held for it are back in stock.");
+    } catch (e) {
+      const error = toApiError(e);
+      if (cancelOutcome(error) === "await-reload") {
+        checkAfterLostConnection(true); // CANCELLED stays until the reload answers
+        return;
+      }
+      setCancels((overlay) => endCancel(overlay, requestId)); // rollback
+      if (error.code === "VALIDATION_FAILED") {
+        setCancelRefusedReason(cancelReopened(reason, error));
+        setCancelOpen(true);
+        return;
+      }
+      // The simulated state (mock) stays, so the request is put back exactly as it was shown.
+      setNotice({ tone: "error", error });
+      toast({
+        variant: "error",
+        title: "Cancellation undone",
+        description: `${error.message} Reference: ${error.requestId}`,
+        action: { label: "Reload", onClick: loaded.reload },
+      });
+      if (reloadsAfterRefusal(error)) {
+        setUpdated(null);
+        loaded.reload();
+      }
+    } finally {
+      setInFlight(null);
+    }
   }
 
   // Resolves either way, so ConfirmDialog never stays open; we close it ourselves in the same update.
@@ -394,6 +473,29 @@ function RequestDetail({ requestId }: { requestId: string }) {
         </section>
       )}
 
+      {confirmed && (canCancel(confirmed, viewer) || cancelling) && (
+        <section aria-labelledby="cancel-heading" className="mt-6 rounded-md border border-border bg-surface p-4">
+          <h2 id="cancel-heading" className="text-lg font-semibold">
+            Cancel request
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            No longer need this blood? Cancel the request. {request.bank.name} will see your reason, and any units
+            held for it go back to stock.
+          </p>
+          <div className="mt-4">
+            <Button
+              variant="secondary"
+              className="min-h-11"
+              loading={cancelling}
+              disabled={busy && !cancelling}
+              onClick={openCancel}
+            >
+              Cancel request
+            </Button>
+          </div>
+        </section>
+      )}
+
       <section aria-labelledby="details-heading" className="mt-6">
         <h2 id="details-heading" className="text-lg font-semibold">
           Details
@@ -436,6 +538,14 @@ function RequestDetail({ requestId }: { requestId: string }) {
         description={`Reserve ${unitsLabel(request.quantity)} of ${what}? If fewer are free, nothing is reserved.`}
         confirmLabel="Approve and reserve"
         onConfirm={approve}
+      />
+
+      <CancelRequestDialog
+        open={cancelOpen}
+        onOpenChange={setCancelOpen}
+        request={request}
+        reopened={cancelRefusedReason}
+        onCancel={(reason) => void cancel(reason)}
       />
 
       <ConfirmDialog
