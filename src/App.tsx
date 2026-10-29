@@ -14,6 +14,7 @@ const NewRequestPage = lazy(() => import("./pages/NewRequestPage"));
 const RecordUnitPage = lazy(() => import("./pages/RecordUnitPage"));
 const RequestDetailPage = lazy(() => import("./pages/RequestDetailPage"));
 const RequestsPage = lazy(() => import("./pages/RequestsPage"));
+const SlotsPage = lazy(() => import("./pages/SlotsPage"));
 const UnitDetailPage = lazy(() => import("./pages/UnitDetailPage"));
 const UnitsPage = lazy(() => import("./pages/UnitsPage"));
 
@@ -22,6 +23,7 @@ const ALL_STAFF: readonly Role[] = ["BANK_STAFF", "HOSPITAL_STAFF", "ADMIN"];
 const BANK_AND_ADMIN: readonly Role[] = ["BANK_STAFF", "ADMIN"];
 const BANK_ONLY: readonly Role[] = ["BANK_STAFF"];
 const HOSPITAL_ONLY: readonly Role[] = ["HOSPITAL_STAFF"];
+const DONOR_BANK_AND_ADMIN: readonly Role[] = ["DONOR", "BANK_STAFF", "ADMIN"];
 
 // Signed out → /login. Wraps every route except /login.
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -134,6 +136,14 @@ export default function App() {
                 element={
                   <RequireRole roles={ALL_STAFF}>
                     <RequestDetailPage />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="slots"
+                element={
+                  <RequireRole roles={DONOR_BANK_AND_ADMIN}>
+                    <SlotsPage />
                   </RequireRole>
                 }
               />

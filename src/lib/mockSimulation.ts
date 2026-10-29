@@ -11,8 +11,22 @@
 // Dashboard: the contract has no Dashboard example, so Prism makes one up from the schema
 // (counts of -2147483648, names "string", dates in 2019). simulateDashboard replaces it with
 // "Sample figures" (realistic, dates from `at`) or "Empty (first use)". Display only, like above.
+//
+// Donation slots: Prism's only DonationSlot example starts on 29 Oct 2026 at 09:00, so it soon
+// reads as started. simulateSlots replaces the list with slots counted from `at`: some with
+// places left, a full one, one that has started (closed to bookings), or none (first use).
+// Display only: a booking still goes to Prism with the simulated slot's id.
 
-import type { BloodRequest, Dashboard, GroupCount, Organisation, Reservation, Unit } from "../api/types";
+import type {
+  BloodRequest,
+  Dashboard,
+  DonationSlot,
+  DonationSlotList,
+  GroupCount,
+  Organisation,
+  Reservation,
+  Unit,
+} from "../api/types";
 import { lagosToday } from "./expiry";
 
 export type SimulatedState = "PENDING" | "APPROVED_HOLD_RUNNING" | "APPROVED_UNIT_EXPIRED" | "FULFILLED";
@@ -176,4 +190,58 @@ export function simulateDashboard(state: DashboardSimulation, at: number, bank: 
       { at: ago(260), event: "BOOKED", subject: "BOOKING", reference: lagosToday(at + DAY_MS) + " 10:00", actor: "Ngozi Adeyemi", note: null },
     ],
   };
+}
+
+export type SlotListSimulation = "PLACES_LEFT" | "FULL" | "CLOSED" | "EMPTY";
+
+export const SLOT_LIST_SIMULATION_LABELS: Record<SlotListSimulation, string> = {
+  PLACES_LEFT: "Slots with places left",
+  FULL: "A full slot",
+  CLOSED: "A closed slot (started)",
+  EMPTY: "Empty (first use)",
+};
+
+/** "HH:mm" on the Lagos day `daysAhead` after `at`, as an instant. Lagos has no daylight saving, so +01:00 always holds. */
+function lagosAt(at: number, daysAhead: number, time: string): string {
+  return new Date(`${lagosToday(at + daysAhead * DAY_MS)}T${time}:00+01:00`).toISOString();
+}
+
+function sampleSlot(n: number, bank: Organisation, startsAt: string, endsAt: string, capacity: number, booked: number): DonationSlot {
+  return {
+    id: `9f4c1a2b-5d6e-4f7a-8b9c-0d1e2f3a4b0${n}`,
+    bank,
+    startsAt,
+    endsAt,
+    capacity,
+    booked,
+    placesLeft: Math.max(0, capacity - booked),
+  };
+}
+
+/** A slot list for `state`, with dates from `at` (ms) and computedAt at `at`. */
+export function simulateSlots(state: SlotListSimulation, at: number): DonationSlotList {
+  const [bankA, bankB] = SAMPLE_BANKS;
+  const open = [
+    sampleSlot(1, bankA, lagosAt(at, 1, "09:00"), lagosAt(at, 1, "11:00"), 10, 7),
+    sampleSlot(2, bankB, lagosAt(at, 2, "13:00"), lagosAt(at, 2, "15:00"), 6, 1),
+    sampleSlot(3, bankA, lagosAt(at, 5, "10:00"), lagosAt(at, 5, "12:00"), 4, 0),
+  ];
+  const computedAt = new Date(at).toISOString();
+  switch (state) {
+    case "PLACES_LEFT":
+      return { computedAt, items: open };
+    case "FULL":
+      return { computedAt, items: [sampleSlot(4, bankB, lagosAt(at, 1, "08:00"), lagosAt(at, 1, "10:00"), 4, 4), ...open.slice(1)] };
+    case "CLOSED":
+      // Started 30 minutes before `at`, still running: places left, but closed to bookings.
+      return {
+        computedAt,
+        items: [
+          sampleSlot(5, bankA, new Date(at - 30 * MINUTE_MS).toISOString(), new Date(at + 90 * MINUTE_MS).toISOString(), 8, 3),
+          ...open.slice(1),
+        ],
+      };
+    case "EMPTY":
+      return { computedAt, items: [] };
+  }
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { BloodRequest, Reservation } from "../api/types";
 import { withPassedHolds } from "./holds";
 import { canIssue, expiredHeldUnits, type Viewer } from "./requestActions";
-import { SIMULATED_HOLD_MS, simulateRequest } from "./mockSimulation";
+import { SIMULATED_HOLD_MS, simulateRequest, simulateSlots } from "./mockSimulation";
 
 const at = (iso: string) => Date.parse(iso);
 const PICKED = at("2026-10-28T10:00:00Z");
@@ -70,5 +70,41 @@ describe("simulateRequest", () => {
     simulateRequest(canned, "FULFILLED", PICKED);
     simulateRequest(canned, "APPROVED_UNIT_EXPIRED", PICKED);
     expect(JSON.stringify(canned)).toBe(before);
+  });
+});
+
+describe("simulateSlots", () => {
+  it("Slots with places left: every slot is in the future and has room", () => {
+    const { items, computedAt } = simulateSlots("PLACES_LEFT", PICKED);
+    expect(computedAt).toBe(new Date(PICKED).toISOString());
+    expect(items.length).toBeGreaterThan(0);
+    for (const s of items) {
+      expect(Date.parse(s.startsAt)).toBeGreaterThan(PICKED);
+      expect(s.placesLeft).toBe(s.capacity - s.booked);
+      expect(s.placesLeft).toBeGreaterThan(0);
+    }
+  });
+
+  it("A full slot: the first slot has no places left", () => {
+    const [full] = simulateSlots("FULL", PICKED).items;
+    expect(full.placesLeft).toBe(0);
+    expect(full.booked).toBe(full.capacity);
+    expect(Date.parse(full.startsAt)).toBeGreaterThan(PICKED);
+  });
+
+  it("A closed slot: the first slot started before the moment it was picked, with places left", () => {
+    const [closed] = simulateSlots("CLOSED", PICKED).items;
+    expect(Date.parse(closed.startsAt)).toBeLessThan(PICKED);
+    expect(Date.parse(closed.endsAt)).toBeGreaterThan(PICKED);
+    expect(closed.placesLeft).toBeGreaterThan(0);
+  });
+
+  it("Empty (first use): no slots", () => {
+    expect(simulateSlots("EMPTY", PICKED).items).toEqual([]);
+  });
+
+  it("puts sample times on the Lagos clock (+01:00, no daylight saving)", () => {
+    const [first] = simulateSlots("PLACES_LEFT", PICKED).items;
+    expect(first.startsAt).toBe("2026-10-29T08:00:00.000Z"); // 09:00 Lagos, the day after PICKED
   });
 });

@@ -15,7 +15,7 @@ import { Navigate, useNavigate } from "react-router";
 import * as Yup from "yup";
 import { ApiError, IS_MOCK, toApiError } from "../api/client";
 import { api } from "../api/endpoints";
-import type { Organisation, Session } from "../api/types";
+import type { Organisation, Role, Session, User } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { FormikField } from "../components/form/FormikField";
 import { Button } from "../shared/ui/button";
@@ -25,11 +25,13 @@ import { Select, type SelectOption } from "../shared/ui/select";
 
 type LoginValues = { email: string; password: string };
 
-type MockRole = "BANK_STAFF" | "HOSPITAL_STAFF";
+type MockRole = Role;
 
 const MOCK_ROLE_OPTIONS = [
   { value: "BANK_STAFF", label: "Bank staff" },
   { value: "HOSPITAL_STAFF", label: "Hospital staff" },
+  { value: "DONOR", label: "Donor" },
+  { value: "ADMIN", label: "Administrator" },
 ] as const satisfies readonly (SelectOption & { value: MockRole })[];
 
 const MOCK_HOSPITAL: Organisation = {
@@ -43,18 +45,17 @@ function isMockRole(value: string | undefined): value is MockRole {
   return MOCK_ROLE_OPTIONS.some((o) => o.value === value);
 }
 
+// Donors and the administrator work for no organisation (User.organisation is null for both).
+const MOCK_USERS: Record<Exclude<MockRole, "BANK_STAFF">, Pick<User, "displayName" | "organisation">> = {
+  HOSPITAL_STAFF: { displayName: "Tunde Bello (demo)", organisation: MOCK_HOSPITAL },
+  DONOR: { displayName: "Ngozi Adeyemi (demo)", organisation: null },
+  ADMIN: { displayName: "Kemi Adebayo (demo)", organisation: null },
+};
+
 /** Mock only: turn Prism's bank staff session into the chosen role. Bank staff is unchanged. */
 function withMockRole(session: Session, role: MockRole): Session {
   if (role === "BANK_STAFF") return session;
-  return {
-    ...session,
-    user: {
-      ...session.user,
-      role: "HOSPITAL_STAFF",
-      displayName: "Tunde Bello (demo)",
-      organisation: MOCK_HOSPITAL,
-    },
-  };
+  return { ...session, user: { ...session.user, role, ...MOCK_USERS[role] } };
 }
 
 const LOGIN_FIELDS = ["email", "password"] as const satisfies readonly (keyof LoginValues)[];

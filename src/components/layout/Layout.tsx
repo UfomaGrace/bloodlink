@@ -28,13 +28,14 @@ const REQUESTS: NavItem = { to: "/requests", label: "Requests" };
 const UNITS: NavItem = { to: "/units", label: "Units" };
 const RECORD_UNIT: NavItem = { to: "/units/new", label: "Record unit" };
 const FIND_BLOOD: NavItem = { to: "/availability", label: "Find blood" };
+const SLOTS: NavItem = { to: "/slots", label: "Donation slots" };
 
 // Each role gets its own list, in the order that role uses them most.
 const NAV_BY_ROLE: Record<Role, readonly NavItem[]> = {
-  BANK_STAFF: [DASHBOARD, REQUESTS, UNITS, RECORD_UNIT],
+  BANK_STAFF: [DASHBOARD, REQUESTS, UNITS, RECORD_UNIT, SLOTS],
   HOSPITAL_STAFF: [FIND_BLOOD, REQUESTS],
-  ADMIN: [DASHBOARD, REQUESTS, UNITS, FIND_BLOOD],
-  DONOR: [],
+  ADMIN: [DASHBOARD, REQUESTS, UNITS, FIND_BLOOD, SLOTS],
+  DONOR: [SLOTS],
 };
 
 // Shown under the name when the user has no organisation (administrator, donor).
@@ -192,5 +193,6 @@ export function HomeRedirect() {
   const { role } = useAuth();
   if (role === "BANK_STAFF" || role === "ADMIN") return <Navigate to="/dashboard" replace />;
   if (role === "HOSPITAL_STAFF") return <Navigate to="/availability" replace />;
+  if (role === "DONOR") return <Navigate to="/slots" replace />;
   return <Navigate to="/requests" replace />;
 }
