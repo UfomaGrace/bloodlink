@@ -1,16 +1,20 @@
-import type { ReactNode } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router";
+import { lazy, Suspense, type ReactNode } from "react";
+import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router";
 import type { Role } from "./api/types";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import Layout, { HomeRedirect, RequireRole } from "./components/layout/Layout";
-import AvailabilityPage from "./pages/AvailabilityPage";
-import DashboardPage from "./pages/DashboardPage";
 import LoginPage from "./pages/LoginPage";
-import NewRequestPage from "./pages/NewRequestPage";
-import RecordUnitPage from "./pages/RecordUnitPage";
-import RequestDetailPage from "./pages/RequestDetailPage";
-import RequestsPage from "./pages/RequestsPage";
-import UnitsPage from "./pages/UnitsPage";
+import { Skeleton } from "./shared/ui/skeleton";
+
+// Each signed-in page is its own chunk, fetched the first time it is opened. LoginPage and
+// Layout stay in the main bundle, so the first screen and the frame never wait on a chunk.
+const AvailabilityPage = lazy(() => import("./pages/AvailabilityPage"));
+const DashboardPage = lazy(() => import("./pages/DashboardPage"));
+const NewRequestPage = lazy(() => import("./pages/NewRequestPage"));
+const RecordUnitPage = lazy(() => import("./pages/RecordUnitPage"));
+const RequestDetailPage = lazy(() => import("./pages/RequestDetailPage"));
+const RequestsPage = lazy(() => import("./pages/RequestsPage"));
+const UnitsPage = lazy(() => import("./pages/UnitsPage"));
 
 // Who can open each screen. The nav in Layout shows the same set.
 const ALL_STAFF: readonly Role[] = ["BANK_STAFF", "HOSPITAL_STAFF", "ADMIN"];
@@ -23,6 +27,24 @@ function RequireAuth({ children }: { children: ReactNode }) {
   const { session } = useAuth();
   if (!session) return <Navigate to="/login" replace />;
   return <>{children}</>;
+}
+
+// Wraps the lazy page routes inside Layout, so the header and nav stay up while a page's chunk loads.
+function PageSuspense() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-col gap-4">
+          <p role="status" className="text-sm font-medium">
+            Loading…
+          </p>
+          <Skeleton lines={6} />
+        </div>
+      }
+    >
+      <Outlet />
+    </Suspense>
+  );
 }
 
 function NotFoundPage() {
@@ -49,62 +71,64 @@ export default function App() {
             }
           >
             <Route index element={<HomeRedirect />} />
-            <Route
-              path="dashboard"
-              element={
-                <RequireRole roles={BANK_AND_ADMIN}>
-                  <DashboardPage />
-                </RequireRole>
-              }
-            />
-            <Route
-              path="units"
-              element={
-                <RequireRole roles={BANK_AND_ADMIN}>
-                  <UnitsPage />
-                </RequireRole>
-              }
-            />
-            <Route
-              path="units/new"
-              element={
-                <RequireRole roles={BANK_ONLY}>
-                  <RecordUnitPage />
-                </RequireRole>
-              }
-            />
-            <Route
-              path="availability"
-              element={
-                <RequireRole roles={ALL_STAFF}>
-                  <AvailabilityPage />
-                </RequireRole>
-              }
-            />
-            <Route
-              path="requests"
-              element={
-                <RequireRole roles={ALL_STAFF}>
-                  <RequestsPage />
-                </RequireRole>
-              }
-            />
-            <Route
-              path="requests/new"
-              element={
-                <RequireRole roles={HOSPITAL_ONLY}>
-                  <NewRequestPage />
-                </RequireRole>
-              }
-            />
-            <Route
-              path="requests/:requestId"
-              element={
-                <RequireRole roles={ALL_STAFF}>
-                  <RequestDetailPage />
-                </RequireRole>
-              }
-            />
+            <Route element={<PageSuspense />}>
+              <Route
+                path="dashboard"
+                element={
+                  <RequireRole roles={BANK_AND_ADMIN}>
+                    <DashboardPage />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="units"
+                element={
+                  <RequireRole roles={BANK_AND_ADMIN}>
+                    <UnitsPage />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="units/new"
+                element={
+                  <RequireRole roles={BANK_ONLY}>
+                    <RecordUnitPage />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="availability"
+                element={
+                  <RequireRole roles={ALL_STAFF}>
+                    <AvailabilityPage />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="requests"
+                element={
+                  <RequireRole roles={ALL_STAFF}>
+                    <RequestsPage />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="requests/new"
+                element={
+                  <RequireRole roles={HOSPITAL_ONLY}>
+                    <NewRequestPage />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="requests/:requestId"
+                element={
+                  <RequireRole roles={ALL_STAFF}>
+                    <RequestDetailPage />
+                  </RequireRole>
+                }
+              />
+            </Route>
             <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Routes>
