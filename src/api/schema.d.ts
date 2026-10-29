@@ -345,8 +345,10 @@ export interface paths {
          *     - the released request is APPROVED with urgency ROUTINE, at this bank;
          *     - the receiving request is PENDING with urgency EMERGENCY, at the same bank, for the same group,
          *       rhesus type and component;
-         *     - the emergency request is then approved exactly as `POST /requests/{id}/approval` would, using the
-         *       released units first. If it still cannot be met in full, nothing is released (all or nothing).
+         *     - free matching units could not already meet the emergency (otherwise approve it directly; a promise to
+         *       the routine hospital is never broken without need);
+         *     - the emergency request is then approved exactly as `POST /requests/{id}/approval` would. If it still cannot
+         *       be met in full, nothing is released (all or nothing).
          *
          *     The routine request goes back to PENDING with a HOLD_RELEASED history entry naming the emergency
          *     request and the reason, so it is never silently lost. The response is the emergency request, now APPROVED.
@@ -492,6 +494,27 @@ export interface paths {
          *     response carries `computedAt`. The windows used are stated in the response so the screen can label them.
          */
         get: operations["getDashboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/actuator/info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Which version of the service is running
+         * @description The git commit the running service was built from (`local` when not deployed). The pipeline polls this after a
+         *     deploy, so the checks that follow run against the new version rather than the one it replaced.
+         */
+        get: operations["getInfo"];
         put?: never;
         post?: never;
         delete?: never;
@@ -884,6 +907,10 @@ export interface components {
             size: number;
             /** Format: int64 */
             totalItems: number;
+        };
+        Info: {
+            /** @description Full git commit SHA, or `local`. */
+            commit: string;
         };
         Health: {
             /** @enum {string} */
@@ -1911,8 +1938,9 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             /**
-             * @description `HOLD_NOT_RELEASABLE`: the released request is not an APPROVED routine request, or the two requests do not
-             *     match (bank, group, rhesus, component, or the receiver is not an emergency).
+             * @description `HOLD_NOT_RELEASABLE`: the released request is not an APPROVED routine request, the two requests do not
+             *     match (bank, group, rhesus, component, or the receiver is not an emergency), or free units could already
+             *     meet the emergency.
              *     `REQUEST_NOT_PENDING`: the emergency request is no longer pending.
              *     `UNITS_NO_LONGER_AVAILABLE`: even with the released units the emergency cannot be met; nothing changed.
              */
@@ -2206,6 +2234,32 @@ export interface operations {
             500: components["responses"]["InternalError"];
         };
     };
+    getInfo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The running version */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "commit": "3de28e9a1b2c4d5e6f708192a3b4c5d6e7f80912"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Info"];
+                    "application/vnd.spring-boot.actuator.v3+json": components["schemas"]["Info"];
+                };
+            };
+        };
+    };
     getHealth: {
         parameters: {
             query?: never;
@@ -2227,6 +2281,7 @@ export interface operations {
                      *     }
                      */
                     "application/json": components["schemas"]["Health"];
+                    "application/vnd.spring-boot.actuator.v3+json": components["schemas"]["Health"];
                 };
             };
             /** @description Service is up but a dependency (the database) is not */
@@ -2241,6 +2296,7 @@ export interface operations {
                      *     }
                      */
                     "application/json": components["schemas"]["Health"];
+                    "application/vnd.spring-boot.actuator.v3+json": components["schemas"]["Health"];
                 };
             };
         };

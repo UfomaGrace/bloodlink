@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: BloodLink API
-  version: 0.2.0
+  version: 0.2.2
   description: |
     Contract between the BloodLink interface and service (Team 4, TeSA cohort 6).
     This file is the agreement: the service does not implement a path that is not here,
@@ -755,8 +755,10 @@ paths:
         - the released request is APPROVED with urgency ROUTINE, at this bank;
         - the receiving request is PENDING with urgency EMERGENCY, at the same bank, for the same group,
           rhesus type and component;
-        - the emergency request is then approved exactly as `POST /requests/{id}/approval` would, using the
-          released units first. If it still cannot be met in full, nothing is released (all or nothing).
+        - free matching units could not already meet the emergency (otherwise approve it directly; a promise to
+          the routine hospital is never broken without need);
+        - the emergency request is then approved exactly as `POST /requests/{id}/approval` would. If it still cannot
+          be met in full, nothing is released (all or nothing).
 
         The routine request goes back to PENDING with a HOLD_RELEASED history entry naming the emergency
         request and the reason, so it is never silently lost. The response is the emergency request, now APPROVED.
@@ -792,8 +794,9 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           description: |
-            `HOLD_NOT_RELEASABLE`: the released request is not an APPROVED routine request, or the two requests do not
-            match (bank, group, rhesus, component, or the receiver is not an emergency).
+            `HOLD_NOT_RELEASABLE`: the released request is not an APPROVED routine request, the two requests do not
+            match (bank, group, rhesus, component, or the receiver is not an emergency), or free units could already
+            meet the emergency.
             `REQUEST_NOT_PENDING`: the emergency request is no longer pending.
             `UNITS_NO_LONGER_AVAILABLE`: even with the released units the emergency cannot be met; nothing changed.
           headers:
@@ -1105,6 +1108,31 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /actuator/info:
+    get:
+      tags: [Operations]
+      operationId: getInfo
+      summary: Which version of the service is running
+      description: |
+        The git commit the running service was built from (`local` when not deployed). The pipeline polls this after a
+        deploy, so the checks that follow run against the new version rather than the one it replaced.
+      x-safety: safe
+      security: []
+      # The service answers with Spring's actuator media type unless the caller asks for application/json; the body is
+      # the same JSON either way.
+      responses:
+        '200':
+          description: The running version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Info'
+              example:
+                commit: 3de28e9a1b2c4d5e6f708192a3b4c5d6e7f80912
+            application/vnd.spring-boot.actuator.v3+json:
+              schema:
+                $ref: '#/components/schemas/Info'
+
   /actuator/health:
     get:
       tags: [Operations]
@@ -1112,6 +1140,8 @@ paths:
       summary: Liveness and database reachability, for the host and for waking the service before a demo
       x-safety: safe
       security: []
+      # The service answers with Spring's actuator media type unless the caller asks for application/json; the body is
+      # the same JSON either way.
       responses:
         '200':
           description: Service and database are up
@@ -1121,6 +1151,9 @@ paths:
                 $ref: '#/components/schemas/Health'
               example:
                 status: UP
+            application/vnd.spring-boot.actuator.v3+json:
+              schema:
+                $ref: '#/components/schemas/Health'
         '503':
           description: Service is up but a dependency (the database) is not
           content:
@@ -1129,6 +1162,9 @@ paths:
                 $ref: '#/components/schemas/Health'
               example:
                 status: DOWN
+            application/vnd.spring-boot.actuator.v3+json:
+              schema:
+                $ref: '#/components/schemas/Health'
 
 components:
   securitySchemes:
@@ -1875,6 +1911,14 @@ components:
         totalItems:
           type: integer
           format: int64
+
+    Info:
+      type: object
+      required: [commit]
+      properties:
+        commit:
+          type: string
+          description: Full git commit SHA, or `local`.
 
     Health:
       type: object

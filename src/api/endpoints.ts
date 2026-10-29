@@ -1,5 +1,6 @@
 // Every path the interface calls. Each one is in contract/openapi.yaml; add nothing that is not.
 import { apiFetch } from './client';
+import type { operations } from './schema';
 import type {
   Attendance,
   Availability,
@@ -39,6 +40,12 @@ export const api = {
 
   /** GET /actuator/health. Also wakes a sleeping free-tier service before the demo. */
   health: () => apiFetch<{ status: 'UP' | 'DOWN' }>('/actuator/health', { auth: false, timeoutMs: 60_000 }),
+
+  /** GET /actuator/info. Which build of the service is deployed. */
+  getInfo: () =>
+    apiFetch<operations['getInfo']['responses'][200]['content']['application/json']>('/actuator/info', {
+      auth: false,
+    }),
 
   listOrganisations: (query: OrganisationQuery, signal?: AbortSignal) =>
     apiFetch<{ items: Organisation[] }>('/organisations', { query, signal }),
