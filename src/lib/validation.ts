@@ -30,6 +30,9 @@ export const CANCEL_REASON_MAX = 500;
 // IssueReversal.reason in the contract: 3–500 characters.
 export const REVERSAL_REASON_MIN = 3;
 export const REVERSAL_REASON_MAX = 500;
+// HoldRelease.reason in the contract: 3–500 characters.
+export const HOLD_RELEASE_REASON_MIN = 3;
+export const HOLD_RELEASE_REASON_MAX = 500;
 
 /** The given day (default today, in the user's time zone) as "YYYY-MM-DD". */
 export function todayIso(now: Date = new Date()): string {
@@ -145,6 +148,14 @@ export const reversalReason = () =>
     .required("Enter a reason for reversing the issue.")
     .min(REVERSAL_REASON_MIN, `Write at least ${REVERSAL_REASON_MIN} characters.`)
     .max(REVERSAL_REASON_MAX, `The reason can be at most ${REVERSAL_REASON_MAX} characters.`);
+
+/** Why the bank releases a routine hold for an emergency: 3–500 characters after trimming (contract HoldRelease). */
+export const holdReleaseReason = () =>
+  Yup.string()
+    .trim()
+    .required("Enter a reason for releasing the hold.")
+    .min(HOLD_RELEASE_REASON_MIN, `Write at least ${HOLD_RELEASE_REASON_MIN} characters.`)
+    .max(HOLD_RELEASE_REASON_MAX, `The reason can be at most ${HOLD_RELEASE_REASON_MAX} characters.`);
 
 /** A slot's date: a full date, today in Lagos or later. `now` is only there for tests. */
 export const slotDate = (now: () => number = Date.now) =>

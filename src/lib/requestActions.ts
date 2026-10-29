@@ -90,6 +90,14 @@ export function canReverseIssue(request: BloodRequest, viewer: Viewer): boolean 
   return request.state === "FULFILLED" && actsForBank(request, viewer);
 }
 
+/**
+ * Release a routine hold for this request: the addressed bank or the administrator, while the
+ * request is a PENDING EMERGENCY (ADR-002). Whether a hold exists to release is lib/holdRelease.
+ */
+export function canReleaseHold(request: BloodRequest, viewer: Viewer): boolean {
+  return request.state === "PENDING" && request.urgency === "EMERGENCY" && actsForBank(request, viewer);
+}
+
 /** What a reversal does to one issued unit: back to stock, or EXPIRED if past its expiry date. */
 export type ReversalOutcome = { reference: string; expired: boolean };
 

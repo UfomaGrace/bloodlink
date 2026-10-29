@@ -34,9 +34,22 @@
 //       404 the request is reloaded. In the mock the simulated state stays, so the rollback shows.
 //     422 → put back, and the dialog reopens with the reason as typed and the field errors.
 //     Lost connection → CANCELLED stays until the reload answers, then we say what it shows.
+// - Staff of the addressed bank and the administrator see "Release a routine hold" while the
+//   request is a PENDING EMERGENCY (canReleaseHold; ADR-002, wording in lib/holdRelease). The
+//   section reads GET /requests?state=APPROVED and GET /availability (loadHoldReleaseScan) and
+//   lists routine requests at the emergency's bank holding matching units, "based on records at".
+//   If free units already meet the emergency it says so and points to Approve instead. A dialog
+//   (components/ReleaseHoldDialog) lets the user choose one and give a reason →
+//   POST /requests/{routineId}/hold-release with { forRequestId: this request, reason }. Not optimistic.
+//     Released → the service's copy (this request, APPROVED) and a success message, plus a link to
+//       the routine request: the answer doesn't include it, so it must be opened to see its new state.
+//     409 HOLD_NOT_RELEASABLE, REQUEST_NOT_PENDING, UNITS_NO_LONGER_AVAILABLE → our own message per
+//       code (holdReleaseError), then this request and the candidates are reloaded.
+//     422 → the dialog stays open with the choice, the reason as typed and the field errors.
+//     Lost connection → reload, then say what the request shows now. No retry.
 // - While an action is in flight, the status line under the heading says so ("Recording issue…"),
 //   because the busy button only shows a spinner. An open dialog hides that line from screen
-//   readers, so the Issue, Reverse and Cancel dialogs each have their own role="status" line too.
+//   readers, so the Issue, Reverse, Cancel and Release dialogs each have their own role="status" line too.
 // - Issue and reverse are not idempotent and take no Idempotency-Key yet. On TIMEOUT or NETWORK_ERROR we
 //   neither say "failed" nor retry: we reload, then say what the request shows now
 //   ("We couldn't confirm. The request now shows as Fulfilled.").
@@ -49,7 +62,9 @@
 // - Mock only (components/MockControls, never on the live API): Prism always answers with one
 //   canned request whose hold has long ended. "Simulate state" shows it as Pending, Approved
 //   (hold running or unit expired) or Fulfilled, with fresh dates, so every action can be tried;
-//   "Force response" makes Prism refuse writes. Simulation is display only: the write still goes
+//   "Force response" makes Prism refuse writes. Three more options show it as a pending emergency
+//   with a releasable routine hold, with none, or with enough free units (simulateHoldReleaseScan
+//   stands in for the candidate reads). Simulation is display only: the write still goes
 //   to Prism, and once it answers the page shows what Prism sent, so the simulation ends.
 // - Active holds count down ("Hold ends in 1h 12m"). The moment a hold passes we show it as
 //   lapsed ourselves (the service does the same at read time), and if no unit is left on hold
@@ -62,7 +77,7 @@
 //   administrator (actsForBank). Hospital staff get plain text: GET /units/{id} answers them 403.
 
 import { Form, Formik, type FormikHelpers } from "formik";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router";
 import * as Yup from "yup";
 import { IS_MOCK, toApiError, type ApiError } from "../api/client";
@@ -76,11 +91,30 @@ import { HistoryList } from "../components/HistoryList";
 import { CancelRequestDialog, cancelReopened, type CancelReopened } from "../components/CancelRequestDialog";
 import { MockControls } from "../components/MockControls";
 import { RequestStateBadge } from "../components/RequestStateBadge";
+import { ReleaseHoldDialog } from "../components/ReleaseHoldDialog";
 import { ResultAlert, type Notice } from "../components/ResultAlert";
 import { ReverseIssueDialog } from "../components/ReverseIssueDialog";
 import { UrgencyLabel } from "../components/UrgencyLabel";
 import { useAsync } from "../hooks/useAsync";
 import { useHoldClock } from "../hooks/useHoldClock";
+import {
+  basedOnLabel,
+  candidatesFoundMessage,
+  EMERGENCY_HOLD_LINE,
+  ENOUGH_FREE_TITLE,
+  enoughFreeMessage,
+  freeUnitsMeet,
+  holdReleaseError,
+  loadHoldReleaseScan,
+  NO_CANDIDATES_MESSAGE,
+  RELEASE_INTRO,
+  releasableHolds,
+  RELEASED_LINK_HINT,
+  releasedMessage,
+  truncatedLabel,
+  UNCONFIRMED_LINK_HINT,
+  type HoldReleaseCandidate,
+} from "../lib/holdRelease";
 import { withPassedHolds } from "../lib/holds";
 import {
   bloodTypeLabel,
@@ -88,12 +122,18 @@ import {
   durationLabel,
   formatDate,
   formatDateTime,
-  formatTime,
+  holdTimeLabel,
   RESERVATION_STATUS_LABELS,
   RESERVATION_STATUS_TONES,
   timeAgo,
 } from "../lib/labels";
-import { simulateRequest, type SimulatedState } from "../lib/mockSimulation";
+import {
+  isHoldReleaseSimulation,
+  REQUEST_DETAIL_SIMULATION_LABELS,
+  simulateHoldReleaseScan,
+  simulateRequestDetail,
+  type RequestDetailSimulation,
+} from "../lib/mockSimulation";
 import {
   cancelOutcome,
   endCancel,
@@ -108,6 +148,7 @@ import {
   canCancel,
   canDecide,
   canIssue,
+  canReleaseHold,
   canReverseIssue,
   expiredHeldUnits,
   expiredUnitsMessage,
@@ -146,13 +187,6 @@ function whatLabel(request: BloodRequest): string {
 
 function unitsLabel(count: number): string {
   return `${count} ${count === 1 ? "unit" : "units"}`;
-}
-
-/** "14:00" today, "27 Oct 2026, 14:00" on any other day. */
-function holdTimeLabel(isoDateTime: string, now: Date = new Date()): string {
-  const time = new Date(isoDateTime);
-  if (Number.isNaN(time.getTime())) return isoDateTime;
-  return time.toDateString() === now.toDateString() ? formatTime(isoDateTime) : formatDateTime(isoDateTime);
 }
 
 /** The soonest hold end among the reservations, or null when there are none. */
@@ -196,7 +230,7 @@ function RequestDetail({ requestId }: { requestId: string }) {
     setUpdatedState(next && { request: next, over: loaded.data });
   const [notice, setNotice] = useState<Notice | null>(null);
   // Mock only: the state to show the canned request in, and when it was picked (dates count from then).
-  const [simulated, setSimulatedState] = useState<{ state: SimulatedState; at: number } | null>(null);
+  const [simulated, setSimulatedState] = useState<{ state: RequestDetailSimulation; at: number } | null>(null);
   const [approveOpen, setApproveOpen] = useState(false);
   const [declineOpen, setDeclineOpen] = useState(false);
   const [declining, setDeclining] = useState(false);
@@ -212,14 +246,32 @@ function RequestDetail({ requestId }: { requestId: string }) {
   const [cancels, setCancels] = useState<CancelOverlay>(NO_CANCELS);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelRefusedReason, setCancelRefusedReason] = useState<CancelReopened | null>(null);
+  const [releaseOpen, setReleaseOpen] = useState(false);
+  // After a hold release (or a lost connection during one): the routine request, which the answer doesn't include.
+  const [routineLink, setRoutineLink] = useState<{ id: string; reference: string; confirmed: boolean } | null>(null);
+  const approveRef = useRef<HTMLButtonElement>(null);
 
   const fetched = updated && updated.over === loaded.data ? updated.request : loaded.data;
-  const shown = fetched && IS_MOCK && simulated ? simulateRequest(fetched, simulated.state, simulated.at) : fetched;
+  const shown = fetched && IS_MOCK && simulated ? simulateRequestDetail(fetched, simulated.state, simulated.at) : fetched;
   const now = useHoldClock(shown?.reservations ?? [], loaded.reload);
   // As the service last told us, and as the screen shows it (CANCELLED while a cancel is unconfirmed).
   const confirmed = shown && withPassedHolds(shown, now);
   const request = confirmed && withCancels(confirmed, cancels);
   const cancelling = cancels.has(requestId);
+
+  // Hold release: the candidates, read only when the action may be offered. In the mock a
+  // hold-release simulation stands in for the two reads.
+  const releaseAllowed = confirmed !== null && canReleaseHold(confirmed, viewer);
+  const simulatedScan =
+    IS_MOCK && simulated && isHoldReleaseSimulation(simulated.state) && confirmed
+      ? simulateHoldReleaseScan(simulated.state, confirmed, simulated.at)
+      : null;
+  const readsScan = releaseAllowed && !simulatedScan;
+  const fetchedScan = useAsync(
+    (signal) => (readsScan && confirmed ? loadHoldReleaseScan(confirmed, api, signal) : Promise.resolve(null)),
+    [requestId, readsScan],
+  );
+  const scan = simulatedScan ?? (readsScan ? fetchedScan.data : null);
 
   // After a lost connection, once the reload has answered, say what the request shows now.
   if (unconfirmed && !loaded.loading && (loaded.data !== unconfirmed.from || loaded.error)) {
@@ -229,7 +281,7 @@ function RequestDetail({ requestId }: { requestId: string }) {
   }
 
   /** Mock only: a "Simulate state" choice. Its dates count from the moment it is picked. */
-  function pickSimulation(state: SimulatedState | null) {
+  function pickSimulation(state: RequestDetailSimulation | null) {
     setSimulatedState(state && { state, at: Date.now() });
   }
 
@@ -237,12 +289,14 @@ function RequestDetail({ requestId }: { requestId: string }) {
   function succeeded(next: BloodRequest, message: string) {
     setUpdated(next);
     setSimulatedState(null);
+    setRoutineLink(null);
     setNotice({ tone: "success", message });
   }
 
   /** Show the error; reload when our copy may no longer be true. */
   function failed(error: ApiError) {
     setSimulatedState(null);
+    setRoutineLink(null);
     setNotice({ tone: "error", error });
     if (error.status === 409 || error.status === 404 || error.isConnectionProblem) {
       setUpdated(null);
@@ -253,6 +307,7 @@ function RequestDetail({ requestId }: { requestId: string }) {
   /** A lost connection: we can't tell whether it happened. No "failed", no retry: reload and report. */
   function checkAfterLostConnection(endsCancel = false) {
     setSimulatedState(null);
+    setRoutineLink(null);
     setNotice(null);
     setUpdated(null);
     setUnconfirmed({ from: loaded.data, endsCancel });
@@ -335,6 +390,35 @@ function RequestDetail({ requestId }: { requestId: string }) {
       setReverseOpen(false);
       if (error.isConnectionProblem) checkAfterLostConnection();
       else failed(error);
+      return null;
+    } finally {
+      setInFlight(null);
+    }
+  }
+
+  // Not optimistic. The call is made on the routine request, for this one. Resolves with the error
+  // after a 422 so the dialog keeps the choice and reason; otherwise we close the dialog ourselves.
+  async function releaseHold(candidate: HoldReleaseCandidate, reason: string): Promise<ApiError | null> {
+    const routine = candidate.request;
+    setInFlight("Releasing hold…");
+    try {
+      const res = await api.releaseHoldForEmergency(routine.id, { forRequestId: requestId, reason });
+      setReleaseOpen(false);
+      succeeded(res.data, releasedMessage(res.data, routine.reference));
+      setRoutineLink({ id: routine.id, reference: routine.reference, confirmed: true });
+      return null;
+    } catch (e) {
+      const error = toApiError(e);
+      if (error.code === "VALIDATION_FAILED") return error;
+      setReleaseOpen(false);
+      if (error.isConnectionProblem) {
+        checkAfterLostConnection();
+        setRoutineLink({ id: routine.id, reference: routine.reference, confirmed: false });
+      } else {
+        failed(holdReleaseError(error));
+      }
+      // The candidates may have changed too (another hold released, units taken).
+      if (error.status === 409 || error.isConnectionProblem) fetchedScan.reload();
       return null;
     } finally {
       setInFlight(null);
@@ -434,6 +518,7 @@ function RequestDetail({ requestId }: { requestId: string }) {
   const outcomes = reversible ? reversalOutcomes(request, now) : [];
   const expiredUnits =
     request.state === "APPROVED" && actsForBank(request, viewer) ? expiredHeldUnits(request, now) : [];
+  const candidates = releaseAllowed && confirmed && scan ? releasableHolds(confirmed, scan.approved, now) : [];
   const busy = loaded.loading || inFlight !== null;
   const statusLine =
     inFlight ??
@@ -455,6 +540,15 @@ function RequestDetail({ requestId }: { requestId: string }) {
 
       {alert && <div className="mt-4">{alert}</div>}
 
+      {routineLink && (
+        <p className="mt-2 text-sm">
+          <Link to={`/requests/${encodeURIComponent(routineLink.id)}`} className={backLink}>
+            {routineLink.reference}
+          </Link>{" "}
+          {routineLink.confirmed ? RELEASED_LINK_HINT : UNCONFIRMED_LINK_HINT}
+        </p>
+      )}
+
       {loaded.error && (
         // A reload after an action failed; the details below may be out of date.
         <ErrorState
@@ -466,7 +560,10 @@ function RequestDetail({ requestId }: { requestId: string }) {
         />
       )}
 
-      <MockControls className="mt-4" simulation={{ value: simulated?.state ?? null, onChange: pickSimulation }} />
+      <MockControls
+        className="mt-4"
+        simulation={{ value: simulated?.state ?? null, onChange: pickSimulation, labels: REQUEST_DETAIL_SIMULATION_LABELS }}
+      />
 
       {canDecide(request, viewer) && (
         <section
@@ -479,8 +576,9 @@ function RequestDetail({ requestId }: { requestId: string }) {
           <p className="mt-1 text-sm text-muted-foreground">
             Approving reserves {unitsLabel(request.quantity)} of {what} for {request.hospital.name}.
           </p>
+          {request.urgency === "EMERGENCY" && <p className="mt-1 text-sm font-medium">{EMERGENCY_HOLD_LINE}</p>}
           <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-            <Button className="min-h-11" disabled={busy} onClick={() => setApproveOpen(true)}>
+            <Button ref={approveRef} className="min-h-11" disabled={busy} onClick={() => setApproveOpen(true)}>
               Approve
             </Button>
             <Button
@@ -492,6 +590,57 @@ function RequestDetail({ requestId }: { requestId: string }) {
               Decline
             </Button>
           </div>
+        </section>
+      )}
+
+      {releaseAllowed && (
+        <section aria-labelledby="release-heading" className="mt-6 rounded-md border border-border bg-surface p-4">
+          <h2 id="release-heading" className="text-lg font-semibold">
+            Release a routine hold
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">{RELEASE_INTRO}</p>
+          {!scan ? (
+            fetchedScan.error && !fetchedScan.loading ? (
+              <ErrorState
+                className="mt-4 whitespace-pre-line"
+                headingLevel="h3"
+                title="We couldn't check for routine holds"
+                description={`${fetchedScan.error.message}\nReference: ${fetchedScan.error.requestId}`}
+                onRetry={fetchedScan.reload}
+              />
+            ) : (
+              <p className="mt-4 text-sm">Looking for routine holds at {request.bank.name}…</p>
+            )
+          ) : (
+            <div className="mt-4 flex flex-col gap-2 text-sm">
+              {freeUnitsMeet(request, scan.freeUnits) ? (
+                <>
+                  <p className="font-semibold">{ENOUGH_FREE_TITLE}</p>
+                  <p>{enoughFreeMessage(scan.freeUnits, request.quantity)}</p>
+                  <div>
+                    <button type="button" className={backLink} onClick={() => approveRef.current?.focus()}>
+                      Go to Approve
+                    </button>
+                  </div>
+                </>
+              ) : candidates.length === 0 ? (
+                <p className="font-medium">{NO_CANDIDATES_MESSAGE}</p>
+              ) : (
+                <>
+                  <p className="font-medium">{candidatesFoundMessage(candidates.length)}</p>
+                  <div>
+                    <Button variant="secondary" className="min-h-11" disabled={busy} onClick={() => setReleaseOpen(true)}>
+                      Release a routine hold
+                    </Button>
+                  </div>
+                </>
+              )}
+              <p className="text-muted-foreground">
+                {basedOnLabel(scan.computedAt)}
+                {scan.truncatedAt !== null && ` ${truncatedLabel(scan.truncatedAt)}`}
+              </p>
+            </div>
+          )}
         </section>
       )}
 
@@ -618,6 +767,14 @@ function RequestDetail({ requestId }: { requestId: string }) {
         request={request}
         outcomes={outcomes}
         onReverse={(reason) => reverse(reason, outcomes)}
+      />
+
+      <ReleaseHoldDialog
+        open={releaseOpen}
+        onOpenChange={setReleaseOpen}
+        emergency={request}
+        candidates={candidates}
+        onRelease={releaseHold}
       />
 
       <ConfirmDialog

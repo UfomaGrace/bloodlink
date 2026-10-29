@@ -7,6 +7,10 @@
 // - Display only. Write calls still go to Prism unchanged, and "Force response" still decides
 //   their status code. History is left as the mock sent it (no invented entries).
 // - Used only when IS_MOCK is true (components/MockControls).
+// - The request detail screen adds three hold-release cases (REQUEST_DETAIL_SIMULATION_LABELS):
+//   the canned request shown as a PENDING EMERGENCY, and simulateHoldReleaseScan standing in for
+//   what GET /requests?state=APPROVED and GET /availability would find. A release still goes to
+//   Prism, on the simulated routine request's id.
 //
 // Dashboard: the contract has no Dashboard example, so Prism makes one up from the schema
 // (counts of -2147483648, names "string", dates in 2019). simulateDashboard replaces it with
@@ -34,6 +38,7 @@ import type {
   Unit,
 } from "../api/types";
 import { lagosToday } from "./expiry";
+import type { HoldReleaseScan } from "./holdRelease";
 
 export type SimulatedState = "PENDING" | "APPROVED_HOLD_RUNNING" | "APPROVED_UNIT_EXPIRED" | "FULFILLED";
 
@@ -70,6 +75,93 @@ export function simulateRequest(request: BloodRequest, state: SimulatedState, at
       return { ...request, state: "APPROVED", reservations: request.reservations.map((r) => held(r, at, "ACTIVE", pastDate)) };
     case "FULFILLED":
       return { ...request, state: "FULFILLED", reservations: request.reservations.map((r) => held(r, at, "ISSUED", inDate)) };
+  }
+}
+
+export type HoldReleaseSimulation = "EMERGENCY_RELEASABLE_HOLD" | "EMERGENCY_NO_RELEASABLE_HOLD" | "EMERGENCY_ENOUGH_FREE";
+
+/** The request detail screen's choices: the request states plus the hold-release cases. */
+export type RequestDetailSimulation = SimulatedState | HoldReleaseSimulation;
+
+export const REQUEST_DETAIL_SIMULATION_LABELS: Record<RequestDetailSimulation, string> = {
+  ...SIMULATED_STATE_LABELS,
+  EMERGENCY_RELEASABLE_HOLD: "Emergency, routine hold releasable",
+  EMERGENCY_NO_RELEASABLE_HOLD: "Emergency, no releasable hold",
+  EMERGENCY_ENOUGH_FREE: "Emergency, enough free units",
+};
+
+export function isHoldReleaseSimulation(state: RequestDetailSimulation): state is HoldReleaseSimulation {
+  return state.startsWith("EMERGENCY_");
+}
+
+/** The canned request as the detail screen shows it in `state`: an emergency case is a PENDING EMERGENCY. */
+export function simulateRequestDetail(request: BloodRequest, state: RequestDetailSimulation, at: number): BloodRequest {
+  if (!isHoldReleaseSimulation(state)) return simulateRequest(request, state, at);
+  return { ...request, state: "PENDING", urgency: "EMERGENCY", declineReason: null, reservations: [] };
+}
+
+const HOUR_MS = 60 * 60_000;
+
+/** An approved request at the emergency's bank, held for `holdHours` more from `at` (as if the service set it). */
+function sampleApproved(
+  emergency: BloodRequest,
+  n: number,
+  changes: Pick<BloodRequest, "urgency" | "quantity" | "component"> & { hospital: Organisation; neededInDays: number; holdHours: number },
+  at: number,
+): BloodRequest {
+  const holdExpiresAt = new Date(at + changes.holdHours * HOUR_MS).toISOString();
+  const approvedAt = new Date(at - HOUR_MS).toISOString();
+  return {
+    ...emergency,
+    id: `e5f6a7b8-c9d0-4e1f-8a2b-3c4d5e6f7a${String(n).padStart(2, "0")}`,
+    reference: `REQ-2026-0003${String(n).padStart(2, "0")}`,
+    hospital: changes.hospital,
+    urgency: changes.urgency,
+    quantity: changes.quantity,
+    component: changes.component,
+    state: "APPROVED",
+    declineReason: null,
+    neededBy: new Date(at + changes.neededInDays * DAY_MS).toISOString(),
+    createdAt: new Date(at - 2 * HOUR_MS).toISOString(),
+    reservations: Array.from({ length: changes.quantity }, (_, i): Reservation => ({
+      id: `f6a7b8c9-d0e1-4f2a-9b3c-4d5e6f7a8b${String(n * 10 + i).padStart(2, "0")}`,
+      unit: {
+        id: `a7b8c9d0-e1f2-4a3b-8c4d-5e6f7a8b9c${String(n * 10 + i).padStart(2, "0")}`,
+        reference: `LCB-2026-0${4200 + n * 10 + i}`,
+        expiryDate: lagosToday(at + 20 * DAY_MS),
+      },
+      status: "ACTIVE",
+      holdExpiresAt,
+      createdAt: approvedAt,
+    })),
+    history: [
+      { at: new Date(at - 2 * HOUR_MS).toISOString(), event: "CREATED", actor: `Staff, ${changes.hospital.name}`, note: null },
+      { at: approvedAt, event: "APPROVED", actor: `Staff, ${emergency.bank.name}`, note: null },
+    ],
+  };
+}
+
+/**
+ * What the hold-release scan would find for `emergency` in `state`, dates from `at` (ms).
+ * Releasable: two matching routine requests (neededBy tomorrow and in 3 days) and an urgent one,
+ * no free units. No releasable hold: only an urgent request and a routine one for another
+ * component. Enough free: a matching routine request, but free units already meet the emergency.
+ */
+export function simulateHoldReleaseScan(state: HoldReleaseSimulation, emergency: BloodRequest, at: number): HoldReleaseScan {
+  const [lekki, yaba] = [SAMPLE_HOSPITALS[1], SAMPLE_HOSPITALS[0]];
+  const other = emergency.component === "PLASMA" ? "PLATELETS" : "PLASMA";
+  const routineSoon = sampleApproved(emergency, 1, { urgency: "ROUTINE", quantity: 1, component: emergency.component, hospital: lekki, neededInDays: 1, holdHours: 3 }, at);
+  const routineLater = sampleApproved(emergency, 2, { urgency: "ROUTINE", quantity: 2, component: emergency.component, hospital: yaba, neededInDays: 3, holdHours: 2 }, at);
+  const urgent = sampleApproved(emergency, 3, { urgency: "URGENT", quantity: 1, component: emergency.component, hospital: lekki, neededInDays: 0, holdHours: 1 }, at);
+  const otherComponent = sampleApproved(emergency, 4, { urgency: "ROUTINE", quantity: 1, component: other, hospital: yaba, neededInDays: 2, holdHours: 3 }, at);
+  const base = { computedAt: new Date(at).toISOString(), truncatedAt: null };
+  switch (state) {
+    case "EMERGENCY_RELEASABLE_HOLD":
+      return { ...base, approved: [routineSoon, urgent, routineLater], freeUnits: 0 };
+    case "EMERGENCY_NO_RELEASABLE_HOLD":
+      return { ...base, approved: [urgent, otherComponent], freeUnits: 0 };
+    case "EMERGENCY_ENOUGH_FREE":
+      return { ...base, approved: [routineSoon], freeUnits: emergency.quantity + 2 };
   }
 }
 

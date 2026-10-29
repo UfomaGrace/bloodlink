@@ -197,6 +197,13 @@ export function formatDateTime(isoDateTime: string): string {
   return Number.isNaN(time) ? isoDateTime : DATE_TIME_FORMAT.format(time);
 }
 
+/** "14:00" today, "27 Oct 2026, 14:00" on any other day. */
+export function holdTimeLabel(isoDateTime: string, now: Date = new Date()): string {
+  const time = new Date(isoDateTime);
+  if (Number.isNaN(time.getTime())) return isoDateTime;
+  return time.toDateString() === now.toDateString() ? formatTime(isoDateTime) : formatDateTime(isoDateTime);
+}
+
 /** Time left, to the minute: "1h 12m", "45m", "2h", "less than a minute". Nothing left → "". */
 export function durationLabel(ms: number): string {
   if (!(ms > 0)) return "";

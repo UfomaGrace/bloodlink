@@ -5,6 +5,7 @@ import {
   canCancel,
   canDecide,
   canIssue,
+  canReleaseHold,
   canReverseIssue,
   isClosed,
   expiredHeldUnits,
@@ -293,5 +294,29 @@ describe("unconfirmedMessage", () => {
 
   it("asks the user to check again when the reload failed too", () => {
     expect(unconfirmedMessage(null)).toMatch(/Check the request again/);
+  });
+});
+
+describe("canReleaseHold", () => {
+  const emergency = (state: RequestState, urgency: BloodRequest["urgency"] = "EMERGENCY") =>
+    ({ ...request(state), urgency }) as BloodRequest;
+
+  it("is true on a PENDING EMERGENCY for staff of the addressed bank and the administrator", () => {
+    expect(canReleaseHold(emergency("PENDING"), ourBankStaff)).toBe(true);
+    expect(canReleaseHold(emergency("PENDING"), admin)).toBe(true);
+  });
+
+  it("is false for hospital staff, staff of another bank and donors", () => {
+    expect(canReleaseHold(emergency("PENDING"), hospitalStaff)).toBe(false);
+    expect(canReleaseHold(emergency("PENDING"), otherBankStaff)).toBe(false);
+    expect(canReleaseHold(emergency("PENDING"), { role: "DONOR", organisationId: null })).toBe(false);
+  });
+
+  it("is false unless the request is an emergency that is still pending", () => {
+    expect(canReleaseHold(emergency("PENDING", "URGENT"), ourBankStaff)).toBe(false);
+    expect(canReleaseHold(emergency("PENDING", "ROUTINE"), ourBankStaff)).toBe(false);
+    for (const state of ["APPROVED", "DECLINED", "CANCELLED", "FULFILLED", "LAPSED"] as const) {
+      expect(canReleaseHold(emergency(state), ourBankStaff)).toBe(false);
+    }
   });
 });

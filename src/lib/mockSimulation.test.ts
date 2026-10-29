@@ -1,9 +1,18 @@
 import { describe, expect, it } from "vitest";
 import type { BloodRequest, Reservation } from "../api/types";
 import { withPassedHolds } from "./holds";
-import { canIssue, expiredHeldUnits, type Viewer } from "./requestActions";
+import { freeUnitsMeet, releasableHolds } from "./holdRelease";
+import { canIssue, canReleaseHold, expiredHeldUnits, type Viewer } from "./requestActions";
 import { canCancelBooking, canRecordAttendance, hasSlotEnded, hasSlotStarted, splitBookings } from "./donations";
-import { SIMULATED_HOLD_MS, simulateBookings, simulateRequest, simulateSlotDetail, simulateSlots } from "./mockSimulation";
+import {
+  SIMULATED_HOLD_MS,
+  simulateBookings,
+  simulateHoldReleaseScan,
+  simulateRequest,
+  simulateRequestDetail,
+  simulateSlotDetail,
+  simulateSlots,
+} from "./mockSimulation";
 
 const at = (iso: string) => Date.parse(iso);
 const PICKED = at("2026-10-28T10:00:00Z");
@@ -158,5 +167,43 @@ describe("simulateSlotDetail", () => {
     const { slot, bookings } = simulateSlotDetail("EMPTY", PICKED, "s", bank);
     expect(bookings).toEqual([]);
     expect(slot.booked).toBe(0);
+  });
+});
+
+describe("hold-release simulations", () => {
+  const emergencyCanned = { ...canned, bloodGroup: "O", rhesus: "NEGATIVE", component: "RED_CELLS", quantity: 1, urgency: "ROUTINE" } as BloodRequest;
+  const shown = (state: "EMERGENCY_RELEASABLE_HOLD" | "EMERGENCY_NO_RELEASABLE_HOLD" | "EMERGENCY_ENOUGH_FREE") => {
+    const request = simulateRequestDetail(emergencyCanned, state, PICKED);
+    return { request, scan: simulateHoldReleaseScan(state, request, PICKED) };
+  };
+  const admin: Viewer = { role: "ADMIN", organisationId: null };
+
+  it("shows the canned request as a pending emergency the bank may release a hold for", () => {
+    const { request } = shown("EMERGENCY_RELEASABLE_HOLD");
+    expect(request).toMatchObject({ state: "PENDING", urgency: "EMERGENCY", reservations: [] });
+    expect(canReleaseHold(request, bank)).toBe(true);
+    expect(canReleaseHold(request, admin)).toBe(true);
+  });
+
+  it("Releasable: two routine candidates, latest needed-by first, and no free units", () => {
+    const { request, scan } = shown("EMERGENCY_RELEASABLE_HOLD");
+    const candidates = releasableHolds(request, scan.approved, PICKED);
+    expect(candidates.map((c) => c.request.reference)).toEqual(["REQ-2026-000302", "REQ-2026-000301"]);
+    expect(freeUnitsMeet(request, scan.freeUnits)).toBe(false);
+  });
+
+  it("No releasable hold: approved requests, but none a routine match", () => {
+    const { request, scan } = shown("EMERGENCY_NO_RELEASABLE_HOLD");
+    expect(scan.approved.length).toBeGreaterThan(0);
+    expect(releasableHolds(request, scan.approved, PICKED)).toEqual([]);
+  });
+
+  it("Enough free: free units already meet the emergency", () => {
+    const { request, scan } = shown("EMERGENCY_ENOUGH_FREE");
+    expect(freeUnitsMeet(request, scan.freeUnits)).toBe(true);
+  });
+
+  it("keeps the other options as simulateRequest", () => {
+    expect(simulateRequestDetail(canned, "FULFILLED", PICKED)).toEqual(simulateRequest(canned, "FULFILLED", PICKED));
   });
 });
