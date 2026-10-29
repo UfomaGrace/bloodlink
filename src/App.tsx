@@ -12,6 +12,7 @@ const AvailabilityPage = lazy(() => import("./pages/AvailabilityPage"));
 const BookingsPage = lazy(() => import("./pages/BookingsPage"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const NewRequestPage = lazy(() => import("./pages/NewRequestPage"));
+const NewSlotPage = lazy(() => import("./pages/NewSlotPage"));
 const RecordUnitPage = lazy(() => import("./pages/RecordUnitPage"));
 const RequestDetailPage = lazy(() => import("./pages/RequestDetailPage"));
 const RequestsPage = lazy(() => import("./pages/RequestsPage"));
@@ -146,6 +147,14 @@ export default function App() {
                 element={
                   <RequireRole roles={DONOR_BANK_AND_ADMIN}>
                     <SlotsPage />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="slots/new"
+                element={
+                  <RequireRole roles={BANK_ONLY}>
+                    <NewSlotPage />
                   </RequireRole>
                 }
               />

@@ -14,6 +14,8 @@
 //   offset ("2026-10-26T14:00"). localDateTimeToIso turns that into the contract's ISO instant.
 
 import * as Yup from "yup";
+import { lagosDateTimeToIso, MAX_SLOT_CAPACITY, MAX_SLOT_HOURS } from "./donations";
+import { lagosToday } from "./expiry";
 import { BLOOD_GROUP_LABELS, COMPONENT_LABELS, keysOf, RHESUS_LABELS, URGENCY_LABELS } from "./labels";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -143,3 +145,54 @@ export const reversalReason = () =>
     .required("Enter a reason for reversing the issue.")
     .min(REVERSAL_REASON_MIN, `Write at least ${REVERSAL_REASON_MIN} characters.`)
     .max(REVERSAL_REASON_MAX, `The reason can be at most ${REVERSAL_REASON_MAX} characters.`);
+
+/** A slot's date: a full date, today in Lagos or later. `now` is only there for tests. */
+export const slotDate = (now: () => number = Date.now) =>
+  isoDate("date").test("not-past", "Choose today or a later date.", (value) => !value || value >= lagosToday(now()));
+
+/** "HH:mm" from <input type="time">. `label` is lower case, e.g. "start time". */
+const clockTime = (label: string) =>
+  Yup.string()
+    .required(`Enter the ${label}.`)
+    .matches(/^([01]\d|2[0-3]):[0-5]\d$/, `Enter the ${label} as hours and minutes, like 09:00.`);
+
+/** The start time on the form's `date` (Lagos time), later than now (DonationSlotCreate.startsAt: "In the future"). */
+export const slotStartTime = (now: () => number = Date.now) =>
+  clockTime("start time").test("future", "Choose a start time later than now.", function (value) {
+    const date: unknown = this.parent?.date;
+    const iso = typeof date === "string" && value ? lagosDateTimeToIso(date, value) : null;
+    return iso === null || Date.parse(iso) > now();
+  });
+
+/**
+ * The end time on the same date: after the start, at most 8 hours later
+ * (DonationSlotCreate.endsAt: "After startsAt, at most 8 hours later"). Passes while the start
+ * is missing; that field reports its own error.
+ */
+export const slotEndTime = () =>
+  clockTime("end time")
+    .test("after-start", "The end time must be after the start time.", function (value) {
+      const start: unknown = this.parent?.startTime;
+      if (!value || typeof start !== "string" || !/^\d{2}:\d{2}$/.test(start)) return true;
+      return value > start;
+    })
+    .test("max-length", `A slot can be at most ${MAX_SLOT_HOURS} hours long.`, function (value) {
+      const start: unknown = this.parent?.startTime;
+      if (!value || typeof start !== "string" || !/^\d{2}:\d{2}$/.test(start)) return true;
+      return minutesOf(value) - minutesOf(start) <= MAX_SLOT_HOURS * 60;
+    });
+
+function minutesOf(time: string): number {
+  const [hours, minutes] = time.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+/** Places in a slot: a whole number, 1–50 (DonationSlotCreate.capacity). An empty input counts as missing. */
+export const slotCapacity = () =>
+  Yup.number()
+    .transform((value: number, original: unknown) => (original === "" ? undefined : value))
+    .typeError("Enter the number of places as a whole number.")
+    .required("Enter how many donors can book.")
+    .integer("Enter a whole number of places.")
+    .min(1, "A slot needs at least 1 place.")
+    .max(MAX_SLOT_CAPACITY, `A slot can have at most ${MAX_SLOT_CAPACITY} places.`);

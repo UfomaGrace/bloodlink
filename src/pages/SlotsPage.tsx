@@ -26,7 +26,7 @@
 
 import { Form, Formik, useFormikContext } from "formik";
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import * as Yup from "yup";
 import { ApiError, IS_MOCK, toApiError } from "../api/client";
 import { api } from "../api/endpoints";
@@ -44,6 +44,7 @@ import {
   bookingClosedReason,
   bookingRefusal,
   canBook,
+  canCreateSlot,
   checkSlotRange,
   formatLagosDay,
   isIsoDate,
@@ -54,6 +55,7 @@ import {
 import type { LabelOption } from "../lib/labels";
 import { SLOT_LIST_SIMULATION_LABELS, simulateSlots, type SlotListSimulation } from "../lib/mockSimulation";
 import { viewerOf } from "../lib/requestActions";
+import { cn } from "../shared/cn";
 import { Button } from "../shared/ui/button";
 import { ConfirmDialog } from "../shared/ui/dialog";
 import { EmptyState } from "../shared/ui/empty-state";
@@ -62,6 +64,15 @@ import { Skeleton } from "../shared/ui/skeleton";
 
 // Before the bank list arrives we can't check ?bankId against it, so only pass a well-formed id.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const focusRing =
+  "focus-visible:[outline:var(--focus-ring-width)_solid_var(--color-focus)] focus-visible:outline-offset-(--focus-ring-offset)";
+
+const primaryLink = cn(
+  "inline-flex min-h-11 items-center justify-center rounded-md px-4 text-sm font-medium",
+  "bg-(--color-primary) text-(--color-on-primary) hover:bg-(--color-primary-hover)",
+  focusRing,
+);
 
 // "This slot has started" must not wait long to become true while the page is open.
 const CLOCK_TICK_MS = 30_000;
@@ -110,6 +121,7 @@ export default function SlotsPage() {
   const isDonor = viewer.role === "DONOR";
   const now = useNow(CLOCK_TICK_MS);
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   const banks = useAsync(
     (signal) => api.listOrganisations({ type: "BLOOD_BANK" }, signal).then((res) => res.data.items),
@@ -244,7 +256,14 @@ export default function SlotsPage() {
 
   return (
     <>
-      <h1 className="text-2xl font-semibold tracking-tight">Donation slots</h1>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h1 className="text-2xl font-semibold tracking-tight">Donation slots</h1>
+        {canCreateSlot(viewer) && (
+          <Link to="/slots/new" className={primaryLink}>
+            New slot
+          </Link>
+        )}
+      </div>
       <p className="mt-2 text-muted-foreground">
         {isDonor ? "Book a place to give blood. " : ""}Times are Lagos time. Without dates, the next 14 days show.
       </p>
@@ -319,6 +338,7 @@ export default function SlotsPage() {
           rangeProblem={rangeProblem}
           hasFilter={hasFilter}
           isDonor={isDonor}
+          onNewSlot={canCreateSlot(viewer) ? () => navigate("/slots/new") : undefined}
           canBookSlot={(slot) => canBook(slot, viewer, now)}
           closedReason={(slot) => bookingClosedReason(slot, now)}
           bookDisabled={inFlight !== null}
@@ -416,6 +436,7 @@ function Results({
   rangeProblem,
   hasFilter,
   isDonor,
+  onNewSlot,
   canBookSlot,
   closedReason,
   bookDisabled,
@@ -429,6 +450,8 @@ function Results({
   rangeProblem: string | null;
   hasFilter: boolean;
   isDonor: boolean;
+  /** Bank staff only: the first-use action. */
+  onNewSlot?: () => void;
   canBookSlot: (slot: DonationSlot) => boolean;
   closedReason: (slot: DonationSlot) => string | null;
   bookDisabled: boolean;
@@ -488,6 +511,7 @@ function Results({
             ? "No bank has opened a slot in the next 14 days. Please check back soon."
             : "No bank has opened a slot in the next 14 days."
         }
+        action={onNewSlot ? { label: "Open a slot", onClick: onNewSlot } : undefined}
       />
     );
   }

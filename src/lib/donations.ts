@@ -193,3 +193,30 @@ export function unconfirmedCancelMessage(status: BookingStatus | null | undefine
   if (status === undefined) return `We couldn't confirm. Your booking for ${where} is no longer in your list.`;
   return `We couldn't confirm. Your booking for ${where} now shows as ${BOOKING_STATUS_LABELS[status]}.`;
 }
+
+// DonationSlotCreate in the contract: endsAt "after startsAt, at most 8 hours later"; capacity 1–50.
+export const MAX_SLOT_HOURS = 8;
+export const MAX_SLOT_CAPACITY = 50;
+
+const HH_MM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/**
+ * A Lagos date and wall-clock time ("2026-10-30", "09:00") as an ISO instant, or null if either
+ * is malformed. Lagos is UTC+1 all year (no daylight saving), so a fixed +01:00 offset is right
+ * for every date: "2026-10-30T09:00:00+01:00" → "2026-10-30T08:00:00.000Z".
+ */
+export function lagosDateTimeToIso(date: string, time: string): string | null {
+  if (!isIsoDate(date) || !HH_MM.test(time)) return null;
+  return new Date(`${date}T${time}:00+01:00`).toISOString();
+}
+
+/** The slot with exactly these start and end instants (compared as instants, so the offset each is written in doesn't matter). */
+export function findSlotWithTimes(
+  slots: readonly DonationSlot[],
+  startsAt: string,
+  endsAt: string,
+): DonationSlot | undefined {
+  const start = Date.parse(startsAt);
+  const end = Date.parse(endsAt);
+  return slots.find((slot) => Date.parse(slot.startsAt) === start && Date.parse(slot.endsAt) === end);
+}

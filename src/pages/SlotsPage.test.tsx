@@ -187,6 +187,18 @@ describe("SlotsPage: what each role is offered", () => {
     expect(screen.queryByRole("button", { name: /^Book / })).toBeNull();
   });
 
+  it("only bank staff get New slot", async () => {
+    renderPage();
+    await screen.findByText("3 of 10 places left");
+    expect(screen.queryByRole("link", { name: "New slot" })).toBeNull();
+    cleanup();
+
+    auth.role = "BANK_STAFF";
+    auth.organisation = BANK;
+    renderPage();
+    expect((await screen.findByRole("link", { name: "New slot" })).getAttribute("href")).toBe("/slots/new");
+  });
+
   it.each([["BANK_STAFF"], ["ADMIN"]] as const)("%s sees the slots but no Book button", async (role) => {
     auth.role = role;
     auth.organisation = role === "BANK_STAFF" ? BANK : null;

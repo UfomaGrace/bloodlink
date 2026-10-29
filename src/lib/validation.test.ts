@@ -11,6 +11,10 @@ import {
   neededByFuture,
   quantity,
   reversalReason,
+  slotCapacity,
+  slotDate,
+  slotEndTime,
+  slotStartTime,
   todayIso,
   unitReference,
   urgency,
@@ -178,5 +182,56 @@ describe("reversalReason", () => {
     expect(errorOf(reversalReason(), "   ")).toBe("Enter a reason for reversing the issue.");
     expect(errorOf(reversalReason(), "  no  ")).toBe("Write at least 3 characters.");
     expect(errorOf(reversalReason(), "A".repeat(501))).toBe("The reason can be at most 500 characters.");
+  });
+});
+
+describe("donation slot fields (DonationSlotCreate)", () => {
+  // 10:00 UTC = 11:00 in Lagos on 29 Oct.
+  const NOW = () => Date.parse("2026-10-29T10:00:00Z");
+  const schema = Yup.object({
+    date: slotDate(NOW),
+    startTime: slotStartTime(NOW),
+    endTime: slotEndTime(),
+    capacity: slotCapacity(),
+  });
+  const valid = { date: "2026-10-30", startTime: "09:00", endTime: "11:00", capacity: "10" };
+  const check = (changes: Partial<typeof valid>) => errorOf(schema, { ...valid, ...changes });
+
+  it("accepts a slot tomorrow", () => {
+    expect(check({})).toBeNull();
+  });
+
+  it("date: today in Lagos or later", () => {
+    expect(check({ date: "" })).toBe("Enter the date.");
+    expect(errorOf(slotDate(NOW), "2026-10-28")).toBe("Choose today or a later date.");
+    expect(errorOf(slotDate(NOW), "2026-10-29")).toBeNull();
+    expect(errorOf(slotDate(() => Date.parse("2026-10-29T23:30:00Z")), "2026-10-29")).toBe("Choose today or a later date.");
+  });
+
+  it("start: later than now, read as Lagos time", () => {
+    expect(check({ date: "2026-10-29", startTime: "10:59", endTime: "12:00" })).toBe("Choose a start time later than now.");
+    expect(check({ date: "2026-10-29", startTime: "11:01", endTime: "12:00" })).toBeNull();
+    expect(check({ startTime: "" })).toBe("Enter the start time.");
+    expect(check({ startTime: "9am" })).toBe("Enter the start time as hours and minutes, like 09:00.");
+  });
+
+  it("end: after the start", () => {
+    expect(check({ endTime: "09:00" })).toBe("The end time must be after the start time.");
+    expect(check({ endTime: "08:30" })).toBe("The end time must be after the start time.");
+  });
+
+  it("end: at most 8 hours after the start (the contract's rule)", () => {
+    expect(check({ endTime: "17:00" })).toBeNull();
+    expect(check({ endTime: "17:01" })).toBe("A slot can be at most 8 hours long.");
+  });
+
+  it("capacity: a whole number, 1 to 50", () => {
+    expect(check({ capacity: "" })).toBe("Enter how many donors can book.");
+    expect(check({ capacity: "0" })).toBe("A slot needs at least 1 place.");
+    expect(check({ capacity: "1" })).toBeNull();
+    expect(check({ capacity: "50" })).toBeNull();
+    expect(check({ capacity: "51" })).toBe("A slot can have at most 50 places.");
+    expect(check({ capacity: "2.5" })).toBe("Enter a whole number of places.");
+    expect(check({ capacity: "ten" })).toBe("Enter the number of places as a whole number.");
   });
 });
