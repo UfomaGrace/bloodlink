@@ -11,11 +11,12 @@
 // - States: loading, error (+ Retry), empty, results. Wide screens get a table; phones get cards.
 // - Hospital staff get a "Request units" link per row, prefilled with that bank and blood type.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { api } from "../api/endpoints";
 import type { Availability, AvailabilityRow, Organisation } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
+import { ComputedAt } from "../components/ComputedAt";
 import { UrlFilterSelect } from "../components/UrlFilterSelect";
 import { useAsync, type AsyncResult } from "../hooks/useAsync";
 import {
@@ -25,12 +26,10 @@ import {
   COMPONENT_LABELS,
   COMPONENT_OPTIONS,
   formatDate,
-  formatTime,
   isKeyOf,
   type LabelOption,
   RHESUS_LABELS,
   RHESUS_OPTIONS,
-  timeAgo,
 } from "../lib/labels";
 import { cn } from "../shared/cn";
 import { Button } from "../shared/ui/button";
@@ -42,9 +41,6 @@ const FILTER_PARAMS = ["bloodGroup", "rhesus", "component", "bankId", "area"] as
 
 // Before the bank list arrives we can't check ?bankId against it, so only pass a well-formed id.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-// How often "(2 min ago)" is recalculated.
-const TICK_MS = 30_000;
 
 const focusRing =
   "focus-visible:[outline:var(--focus-ring-width)_solid_var(--color-focus)] focus-visible:outline-offset-(--focus-ring-offset)";
@@ -69,16 +65,6 @@ function areaOptions(banks: readonly Organisation[]): LabelOption<string>[] {
   return [...new Set(banks.map((bank) => bank.area))]
     .sort((a, b) => a.localeCompare(b))
     .map((area) => ({ value: area, label: area }));
-}
-
-/** The current time, updated every `intervalMs`. */
-function useNow(intervalMs: number): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), intervalMs);
-    return () => window.clearInterval(id);
-  }, [intervalMs]);
-  return now;
 }
 
 export default function AvailabilityPage() {
@@ -244,15 +230,6 @@ function resultsMessage(data: Availability): string {
   const count = data.items.length;
   if (count === 0) return "No available units match.";
   return count === 1 ? "1 result." : `${count} results.`;
-}
-
-function ComputedAt({ computedAt }: { computedAt: string }) {
-  const now = useNow(TICK_MS);
-  return (
-    <p className="text-sm text-muted-foreground">
-      Figures computed at <time dateTime={computedAt}>{formatTime(computedAt)}</time> ({timeAgo(computedAt, now)})
-    </p>
-  );
 }
 
 function Results({

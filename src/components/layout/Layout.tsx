@@ -23,6 +23,7 @@ import { Button } from "../../shared/ui/button";
 
 type NavItem = { to: string; label: string };
 
+const DASHBOARD: NavItem = { to: "/dashboard", label: "Dashboard" };
 const REQUESTS: NavItem = { to: "/requests", label: "Requests" };
 const UNITS: NavItem = { to: "/units", label: "Units" };
 const RECORD_UNIT: NavItem = { to: "/units/new", label: "Record unit" };
@@ -30,9 +31,9 @@ const FIND_BLOOD: NavItem = { to: "/availability", label: "Find blood" };
 
 // Each role gets its own list, in the order that role uses them most.
 const NAV_BY_ROLE: Record<Role, readonly NavItem[]> = {
-  BANK_STAFF: [REQUESTS, UNITS, RECORD_UNIT],
+  BANK_STAFF: [DASHBOARD, REQUESTS, UNITS, RECORD_UNIT],
   HOSPITAL_STAFF: [FIND_BLOOD, REQUESTS],
-  ADMIN: [REQUESTS, UNITS, FIND_BLOOD],
+  ADMIN: [DASHBOARD, REQUESTS, UNITS, FIND_BLOOD],
   DONOR: [],
 };
 
@@ -189,7 +190,7 @@ export function RequireRole({ roles, children }: { roles: readonly Role[]; child
 
 export function HomeRedirect() {
   const { role } = useAuth();
-  if (role === "BANK_STAFF") return <Navigate to="/requests" replace />;
+  if (role === "BANK_STAFF" || role === "ADMIN") return <Navigate to="/dashboard" replace />;
   if (role === "HOSPITAL_STAFF") return <Navigate to="/availability" replace />;
   return <Navigate to="/requests" replace />;
 }

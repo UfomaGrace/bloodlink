@@ -6,6 +6,9 @@
 
 import type { BloodRequest, RequestState, Reservation } from "../api/types";
 
+/** What the hold clock reads from a hold: a Reservation, or anything shaped like one (the dashboard's holds). */
+export type HoldTiming = Pick<Reservation, "status" | "holdExpiresAt">;
+
 /** Less than this left on a hold counts as "ends soon". */
 export const HOLD_SOON_MS = 60 * 60_000;
 
@@ -26,7 +29,7 @@ export function withPassedHolds(request: BloodRequest, now: number): BloodReques
 }
 
 /** The soonest end among holds still running at `now` (ms), or null when none is. */
-export function nextHoldEnd(reservations: readonly Reservation[], now: number): number | null {
+export function nextHoldEnd(reservations: readonly HoldTiming[], now: number): number | null {
   const ends = reservations
     .filter((r) => r.status === "ACTIVE")
     .map((r) => Date.parse(r.holdExpiresAt))

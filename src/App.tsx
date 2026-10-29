@@ -4,6 +4,7 @@ import type { Role } from "./api/types";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import Layout, { HomeRedirect, RequireRole } from "./components/layout/Layout";
 import AvailabilityPage from "./pages/AvailabilityPage";
+import DashboardPage from "./pages/DashboardPage";
 import LoginPage from "./pages/LoginPage";
 import NewRequestPage from "./pages/NewRequestPage";
 import RecordUnitPage from "./pages/RecordUnitPage";
@@ -48,6 +49,14 @@ export default function App() {
             }
           >
             <Route index element={<HomeRedirect />} />
+            <Route
+              path="dashboard"
+              element={
+                <RequireRole roles={BANK_AND_ADMIN}>
+                  <DashboardPage />
+                </RequireRole>
+              }
+            />
             <Route
               path="units"
               element={

@@ -6,12 +6,12 @@
 // - Calls onHoldPassed once each time a running hold passes, so the screen can reload.
 //   A hold already past when it arrives is skipped, so a clock that runs ahead of the
 //   service's (which may still say ACTIVE) can't cause a reload loop.
+// - Takes reservations, or anything with their status and holdExpiresAt (lib/holds HoldTiming).
 
 import { useEffect, useRef, useState } from "react";
-import type { Reservation } from "../api/types";
-import { nextHoldEnd } from "../lib/holds";
+import { nextHoldEnd, type HoldTiming } from "../lib/holds";
 
-export function useHoldClock(reservations: readonly Reservation[], onHoldPassed: () => void): number {
+export function useHoldClock(reservations: readonly HoldTiming[], onHoldPassed: () => void): number {
   const [now, setNow] = useState(() => Date.now());
   const onHoldPassedRef = useRef(onHoldPassed);
   useEffect(() => {

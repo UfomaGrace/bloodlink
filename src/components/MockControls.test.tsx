@@ -57,4 +57,21 @@ describe("MockControls", () => {
     unmount();
     expect(client.getForcedMockCode()).toBeNull();
   });
+
+  it("offers the labels it is given instead of the request states", async () => {
+    const { MockControls } = await load("true");
+    const onChange = vi.fn();
+    const labels = { SAMPLE: "Sample figures", EMPTY: "Empty (first use)" };
+    const { rerender } = render(<MockControls simulation={{ value: null, onChange, labels }} />);
+    const select = screen.getByLabelText(/Simulate state/);
+    expect([...select.querySelectorAll("option")].map((o) => o.textContent)).toEqual([
+      "As the mock sends it",
+      "Sample figures",
+      "Empty (first use)",
+    ]);
+    await userEvent.selectOptions(select, "Empty (first use)");
+    expect(onChange).toHaveBeenLastCalledWith("EMPTY");
+    rerender(<MockControls simulation={{ value: "EMPTY", onChange, labels }} />);
+    expect(screen.getByRole("status").textContent).toBe("Simulated: Empty (first use).");
+  });
 });

@@ -1,8 +1,11 @@
 // MockControls: mock-only tools for trying every action against Prism.
 //
-//   <MockControls simulation={{ value: simulated, onChange: setSimulated }} />
+//   <MockControls simulation={{ value: simulated, onChange: setSimulated }} />   // request states
+//   <MockControls simulation={{ value, onChange, labels: DASHBOARD_SIMULATION_LABELS }} />
 //   <MockControls />   // "Force response" only
 //
+// - Without `labels`, "Simulate state" offers the request states (SIMULATED_STATE_LABELS), as the
+//   request screens use it. With `labels`, it offers those keys instead.
 // - Renders nothing unless IS_MOCK is true, so it can never appear on the live service.
 // - "Simulate state" changes only what the page shows (lib/mockSimulation). Write calls still
 //   go to Prism as they are.
@@ -13,7 +16,7 @@
 
 import { useEffect, useState } from "react";
 import { IS_MOCK, setForcedMockCode } from "../api/client";
-import { isKeyOf } from "../lib/labels";
+import { isKeyOf, keysOf } from "../lib/labels";
 import { SIMULATED_STATE_LABELS, type SimulatedState } from "../lib/mockSimulation";
 import { cn } from "../shared/cn";
 import { FormField } from "../shared/ui/form-field";
@@ -26,18 +29,79 @@ const selectClasses = cn(
   "focus-visible:[outline:var(--focus-ring-width)_solid_var(--color-focus)] focus-visible:outline-offset-(--focus-ring-offset)",
 );
 
-export type MockControlsProps = {
+/** A "Simulate state" choice: the current value, its setter, and every option with its label. */
+export type Simulation<K extends string> = {
+  value: K | null;
+  onChange: (next: K | null) => void;
+  labels: Record<K, string>;
+};
+
+/** The request screens' choice: labels left out means the request states (SIMULATED_STATE_LABELS). */
+type RequestSimulation = Omit<Simulation<SimulatedState>, "labels"> & { labels?: undefined };
+
+export type MockControlsProps<K extends string = SimulatedState> = {
   /** Omit on screens with nothing to simulate; only "Force response" shows then. */
-  simulation?: { value: SimulatedState | null; onChange: (next: SimulatedState | null) => void };
+  simulation?: Simulation<K> | RequestSimulation;
   className?: string;
 };
 
-export function MockControls(props: MockControlsProps) {
+export function MockControls<K extends string = SimulatedState>(props: MockControlsProps<K>) {
   if (!IS_MOCK) return null;
   return <MockControlsPanel {...props} />;
 }
 
-function MockControlsPanel({ simulation, className }: MockControlsProps) {
+/** What the select and the banner need, whichever kind of simulation was passed. */
+type SimulationView = {
+  value: string;
+  /** The current choice's label, "" when none. */
+  label: string;
+  options: { value: string; label: string }[];
+  pick: (value: string) => void;
+};
+
+function isRequestSimulation<K extends string>(s: Simulation<K> | RequestSimulation): s is RequestSimulation {
+  return s.labels === undefined;
+}
+
+function viewOf<K extends string>({ value, onChange, labels }: Simulation<K>): SimulationView {
+  return {
+    value: value ?? "",
+    label: value ? labels[value] : "",
+    options: keysOf(labels).map((key) => ({ value: key, label: labels[key] })),
+    pick: (next) => onChange(isKeyOf(labels, next) ? next : null),
+  };
+}
+
+function simulationView<K extends string>(simulation: Simulation<K> | RequestSimulation): SimulationView {
+  return isRequestSimulation(simulation)
+    ? viewOf({ ...simulation, labels: SIMULATED_STATE_LABELS })
+    : viewOf(simulation);
+}
+
+function SimulationSelect({ view }: { view: SimulationView }) {
+  return (
+    <FormField label="Simulate state" hint="Changes only what this page shows.">
+      {(control) => (
+        <select
+          {...control}
+          className={selectClasses}
+          value={view.value}
+          onChange={(event) => view.pick(event.target.value)}
+        >
+          <option value="">As the mock sends it</option>
+          {view.options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      )}
+    </FormField>
+  );
+}
+
+function MockControlsPanel<K extends string>({ simulation, className }: MockControlsProps<K>) {
+  const view = simulation ? simulationView(simulation) : null;
   const [forced, setForced] = useState<number | null>(null);
 
   useEffect(() => () => setForcedMockCode(null), []);
@@ -49,7 +113,7 @@ function MockControlsPanel({ simulation, className }: MockControlsProps) {
   }
 
   const banner = [
-    simulation?.value ? `Simulated: ${SIMULATED_STATE_LABELS[simulation.value]}.` : "",
+    view?.label ? `Simulated: ${view.label}.` : "",
     forced ? `Every write gets ${forced} from the mock.` : "",
   ]
     .filter(Boolean)
@@ -64,28 +128,7 @@ function MockControlsPanel({ simulation, className }: MockControlsProps) {
         Mock server tools
       </h2>
       <div className="mt-2 grid gap-4 sm:grid-cols-2">
-        {simulation && (
-          <FormField label="Simulate state" hint="Changes only what this page shows.">
-            {(control) => (
-              <select
-                {...control}
-                className={selectClasses}
-                value={simulation.value ?? ""}
-                onChange={(event) => {
-                  const next = event.target.value;
-                  simulation.onChange(isKeyOf(SIMULATED_STATE_LABELS, next) ? next : null);
-                }}
-              >
-                <option value="">As the mock sends it</option>
-                {Object.entries(SIMULATED_STATE_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            )}
-          </FormField>
-        )}
+        {view && <SimulationSelect view={view} />}
         <FormField label="Force response" hint="Status the mock returns for every write.">
           {(control) => (
             <select
