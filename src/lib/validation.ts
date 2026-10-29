@@ -25,6 +25,9 @@ export const DECLINE_REASON_MAX = 500;
 // Cancellation.reason in the contract: 3–500 characters.
 export const CANCEL_REASON_MIN = 3;
 export const CANCEL_REASON_MAX = 500;
+// IssueReversal.reason in the contract: 3–500 characters.
+export const REVERSAL_REASON_MIN = 3;
+export const REVERSAL_REASON_MAX = 500;
 
 /** The given day (default today, in the user's time zone) as "YYYY-MM-DD". */
 export function todayIso(now: Date = new Date()): string {
@@ -132,3 +135,11 @@ export const cancelReason = () =>
     .required("Enter a reason for cancelling.")
     .min(CANCEL_REASON_MIN, `Write at least ${CANCEL_REASON_MIN} characters.`)
     .max(CANCEL_REASON_MAX, `The reason can be at most ${CANCEL_REASON_MAX} characters.`);
+
+/** Why the bank reverses an issue: 3–500 characters after trimming (contract IssueReversal). */
+export const reversalReason = () =>
+  Yup.string()
+    .trim()
+    .required("Enter a reason for reversing the issue.")
+    .min(REVERSAL_REASON_MIN, `Write at least ${REVERSAL_REASON_MIN} characters.`)
+    .max(REVERSAL_REASON_MAX, `The reason can be at most ${REVERSAL_REASON_MAX} characters.`);

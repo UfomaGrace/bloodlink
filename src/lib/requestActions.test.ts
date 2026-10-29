@@ -5,10 +5,13 @@ import {
   canCancel,
   canDecide,
   canIssue,
+  canReverseIssue,
   isClosed,
   expiredHeldUnits,
   expiredUnitsMessage,
   issuedUnitReferences,
+  reversalOutcomeLabel,
+  reversalOutcomes,
   unconfirmedMessage,
   viewerOf,
   type Viewer,
@@ -224,6 +227,57 @@ describe("issuedUnitReferences", () => {
   it("lists the units on a running hold", () => {
     const req = approved(reservation("LCB-1"), reservation("LCB-2", "LAPSED"), reservation("LCB-3"));
     expect(issuedUnitReferences(req)).toEqual(["LCB-1", "LCB-3"]);
+  });
+});
+
+describe("canReverseIssue", () => {
+  const fulfilled = () => request("FULFILLED", [reservation("U1", "ISSUED")]);
+
+  it("lets the addressed bank and the administrator reverse a FULFILLED request", () => {
+    expect(canReverseIssue(fulfilled(), ourBankStaff)).toBe(true);
+    expect(canReverseIssue(fulfilled(), admin)).toBe(true);
+  });
+
+  // Fails if the organisation comparison is removed.
+  it("never lets another bank or the hospital reverse", () => {
+    expect(canReverseIssue(fulfilled(), otherBankStaff)).toBe(false);
+    expect(canReverseIssue(fulfilled(), hospitalStaff)).toBe(false);
+  });
+
+  it("is false in any state but FULFILLED", () => {
+    const states: RequestState[] = ["PENDING", "APPROVED", "DECLINED", "CANCELLED", "LAPSED", "UNIT_EXPIRED"];
+    for (const state of states) expect(canReverseIssue(request(state, [reservation("U1", "ISSUED")]), ourBankStaff)).toBe(false);
+  });
+});
+
+describe("reversalOutcomes", () => {
+  it("sends in-date issued units back to stock and expired ones to EXPIRED, by the Lagos date", () => {
+    const req = request("FULFILLED", [
+      reservation("LCB-1", "ISSUED", "2026-10-28T12:00:00Z", "2026-10-28"),
+      reservation("LCB-2", "ISSUED", "2026-10-28T12:00:00Z", "2026-10-27"),
+    ]);
+    expect(reversalOutcomes(req, NOW)).toEqual([
+      { reference: "LCB-1", expired: false },
+      { reference: "LCB-2", expired: true },
+    ]);
+    // 23:30 UTC on the 28th is already the 29th in Lagos.
+    expect(reversalOutcomes(req, at("2026-10-28T23:30:00Z")).map((o) => o.expired)).toEqual([true, true]);
+  });
+
+  it("only lists issued units", () => {
+    const req = request("FULFILLED", [reservation("LCB-1", "ISSUED"), reservation("LCB-2", "RELEASED")]);
+    expect(reversalOutcomes(req, NOW).map((o) => o.reference)).toEqual(["LCB-1"]);
+  });
+});
+
+describe("reversalOutcomeLabel", () => {
+  it("says where each unit goes and that it is derived from the expiry date", () => {
+    expect(reversalOutcomeLabel({ reference: "LCB-1", expired: false })).toBe(
+      "LCB-1: back in stock as available (based on expiry date).",
+    );
+    expect(reversalOutcomeLabel({ reference: "LCB-2", expired: true })).toBe(
+      "LCB-2: past its expiry date, so it becomes expired, not available (based on expiry date).",
+    );
   });
 });
 

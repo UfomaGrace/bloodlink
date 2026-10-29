@@ -10,6 +10,7 @@ import {
   localDateTimeToIso,
   neededByFuture,
   quantity,
+  reversalReason,
   todayIso,
   unitReference,
   urgency,
@@ -163,5 +164,19 @@ describe("cancelReason", () => {
     expect(errorOf(cancelReason(), "   ")).toBe("Enter a reason for cancelling.");
     expect(errorOf(cancelReason(), "  no  ")).toBe("Write at least 3 characters.");
     expect(errorOf(cancelReason(), "A".repeat(501))).toBe("The reason can be at most 500 characters.");
+  });
+});
+
+describe("reversalReason", () => {
+  it("accepts 3 to 500 characters", () => {
+    expect(errorOf(reversalReason(), "Err")).toBeNull();
+    expect(errorOf(reversalReason(), "A".repeat(500))).toBeNull();
+  });
+
+  it("rejects empty, blank, too short and too long", () => {
+    expect(errorOf(reversalReason(), "")).toBe("Enter a reason for reversing the issue.");
+    expect(errorOf(reversalReason(), "   ")).toBe("Enter a reason for reversing the issue.");
+    expect(errorOf(reversalReason(), "  no  ")).toBe("Write at least 3 characters.");
+    expect(errorOf(reversalReason(), "A".repeat(501))).toBe("The reason can be at most 500 characters.");
   });
 });

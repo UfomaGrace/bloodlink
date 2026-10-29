@@ -16,6 +16,15 @@
 //   issued) shows the message and reloads. If a held unit has passed its expiry date, the Issue
 //   section says which one instead of offering the button (worked out from expiryDate, and
 //   labelled so: UnitSummary has no state field yet).
+// - The same people see "Reverse issue" while the request is FULFILLED (canReverseIssue), for an
+//   issue recorded in error. A dialog (components/ReverseIssueDialog) lists each issued unit and
+//   where it goes: back to stock, or EXPIRED if past its expiry date (reversalOutcomes, labelled
+//   "based on expiry date"), and asks for a reason (lib/validation reversalReason) →
+//   POST /requests/{id}/issue/reversal. Not optimistic: the dialog stays open until the service answers.
+//     Reversed → the service's copy (PENDING again, history with both entries) and a success message.
+//     409 REQUEST_NOT_FULFILLED (someone already reversed it) or 404 → the message, and a reload.
+//     422 → the dialog stays open with the reason as typed and the field errors.
+//     Lost connection → reload, then say what the request shows now. No retry.
 // - Staff of the requesting hospital (only them, not the administrator) see "Cancel request" while
 //   the request is PENDING or APPROVED (canCancel). A reason (lib/validation cancelReason) →
 //   POST /requests/{id}/cancellation. The dialog closes and the request shows CANCELLED at once.
@@ -27,7 +36,7 @@
 //     Lost connection → CANCELLED stays until the reload answers, then we say what it shows.
 // - While an action is in flight, the status line under the heading says so ("Recording issue…"),
 //   because the busy button only shows a spinner.
-// - Issue is not idempotent and takes no Idempotency-Key yet. On TIMEOUT or NETWORK_ERROR we
+// - Issue and reverse are not idempotent and take no Idempotency-Key yet. On TIMEOUT or NETWORK_ERROR we
 //   neither say "failed" nor retry: we reload, then say what the request shows now
 //   ("We couldn't confirm. The request now shows as Fulfilled.").
 // - 409 (UNITS_NO_LONGER_AVAILABLE, REQUEST_NOT_PENDING), 404 or a lost connection: the alert
@@ -64,6 +73,7 @@ import { CancelRequestDialog, cancelReopened, type CancelReopened } from "../com
 import { MockControls } from "../components/MockControls";
 import { RequestStateBadge } from "../components/RequestStateBadge";
 import { ResultAlert, type Notice } from "../components/ResultAlert";
+import { ReverseIssueDialog } from "../components/ReverseIssueDialog";
 import { UrgencyLabel } from "../components/UrgencyLabel";
 import { useAsync } from "../hooks/useAsync";
 import { useHoldClock } from "../hooks/useHoldClock";
@@ -95,11 +105,15 @@ import {
   canCancel,
   canDecide,
   canIssue,
+  canReverseIssue,
   expiredHeldUnits,
   expiredUnitsMessage,
   issuedUnitReferences,
+  reversalOutcomeLabel,
+  reversalOutcomes,
   unconfirmedMessage,
   viewerOf,
+  type ReversalOutcome,
 } from "../lib/requestActions";
 import { DECLINE_REASON_MAX, declineReason } from "../lib/validation";
 import { cn } from "../shared/cn";
@@ -156,6 +170,10 @@ function issuedMessage(unitReferences: readonly string[]): string {
     : "Recorded as issued.";
 }
 
+function reversedMessage(outcomes: readonly ReversalOutcome[]): string {
+  return ["Issue reversed. The request is pending again.", ...outcomes.map(reversalOutcomeLabel)].join(" ");
+}
+
 export default function RequestDetailPage() {
   const { requestId = "" } = useParams();
   // A new id starts with fresh state: no leftover alert, override or open dialog.
@@ -181,6 +199,7 @@ function RequestDetail({ requestId }: { requestId: string }) {
   const [declining, setDeclining] = useState(false);
   const [declineIssues, setDeclineIssues] = useState<{ error: ApiError; issues: FieldIssue[] } | null>(null);
   const [issueOpen, setIssueOpen] = useState(false);
+  const [reverseOpen, setReverseOpen] = useState(false);
   // What is in flight, for the status line ("Recording issue…"). Null when nothing is.
   const [inFlight, setInFlight] = useState<string | null>(null);
   // Set after a lost connection: the copy we had when the reload started, and whether a cancel
@@ -298,6 +317,27 @@ function RequestDetail({ requestId }: { requestId: string }) {
     }
   }
 
+  // Not optimistic. Resolves with the error after a 422 so the dialog keeps the reason; otherwise
+  // we close the dialog ourselves and resolve null.
+  async function reverse(reason: string, outcomes: readonly ReversalOutcome[]): Promise<ApiError | null> {
+    setInFlight("Reversing issue…");
+    try {
+      const res = await api.reverseIssue(requestId, { reason });
+      setReverseOpen(false);
+      succeeded(res.data, reversedMessage(outcomes));
+      return null;
+    } catch (e) {
+      const error = toApiError(e);
+      if (error.code === "VALIDATION_FAILED") return error;
+      setReverseOpen(false);
+      if (error.isConnectionProblem) checkAfterLostConnection();
+      else failed(error);
+      return null;
+    } finally {
+      setInFlight(null);
+    }
+  }
+
   // Resolves either way, so ConfirmDialog never stays open; we close it ourselves in the same update.
   async function approve() {
     try {
@@ -387,6 +427,8 @@ function RequestDetail({ requestId }: { requestId: string }) {
   const what = whatLabel(request);
   const unitReferences = issuedUnitReferences(request);
   const issuable = canIssue(request, viewer, now);
+  const reversible = canReverseIssue(request, viewer);
+  const outcomes = reversible ? reversalOutcomes(request, now) : [];
   const expiredUnits =
     request.state === "APPROVED" && actsForBank(request, viewer) ? expiredHeldUnits(request, now) : [];
   const busy = loaded.loading || inFlight !== null;
@@ -473,6 +515,23 @@ function RequestDetail({ requestId }: { requestId: string }) {
         </section>
       )}
 
+      {reversible && (
+        <section aria-labelledby="reverse-heading" className="mt-6 rounded-md border border-border bg-surface p-4">
+          <h2 id="reverse-heading" className="text-lg font-semibold">
+            Reverse issue
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Recorded as issued by mistake? Reverse it. The request goes back to pending, units still in date return to
+            stock and any past their expiry date become expired.
+          </p>
+          <div className="mt-4">
+            <Button variant="secondary" className="min-h-11" disabled={busy} onClick={() => setReverseOpen(true)}>
+              Reverse issue
+            </Button>
+          </div>
+        </section>
+      )}
+
       {confirmed && (canCancel(confirmed, viewer) || cancelling) && (
         <section aria-labelledby="cancel-heading" className="mt-6 rounded-md border border-border bg-surface p-4">
           <h2 id="cancel-heading" className="text-lg font-semibold">
@@ -546,6 +605,14 @@ function RequestDetail({ requestId }: { requestId: string }) {
         request={request}
         reopened={cancelRefusedReason}
         onCancel={(reason) => void cancel(reason)}
+      />
+
+      <ReverseIssueDialog
+        open={reverseOpen}
+        onOpenChange={setReverseOpen}
+        request={request}
+        outcomes={outcomes}
+        onReverse={(reason) => reverse(reason, outcomes)}
       />
 
       <ConfirmDialog

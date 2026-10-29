@@ -85,6 +85,31 @@ export function issuedUnitReferences(request: BloodRequest): string[] {
   return request.reservations.filter((r) => r.status === "ACTIVE").map((r) => r.unit.reference);
 }
 
+/** Reverse an issue: the addressed bank or the administrator, while the request is FULFILLED. */
+export function canReverseIssue(request: BloodRequest, viewer: Viewer): boolean {
+  return request.state === "FULFILLED" && actsForBank(request, viewer);
+}
+
+/** What a reversal does to one issued unit: back to stock, or EXPIRED if past its expiry date. */
+export type ReversalOutcome = { reference: string; expired: boolean };
+
+/**
+ * Each issued unit and where the reversal sends it (the contract's rule for
+ * POST /requests/{id}/issue/reversal). Worked out from expiryDate on our side, so label it as such.
+ */
+export function reversalOutcomes(request: BloodRequest, now: number): ReversalOutcome[] {
+  return request.reservations
+    .filter((r) => r.status === "ISSUED")
+    .map((r) => ({ reference: r.unit.reference, expired: isUnitExpired(r.unit.expiryDate, now) }));
+}
+
+/** One line per unit for the reverse dialog and the success message, marked as derived from the expiry date. */
+export function reversalOutcomeLabel(outcome: ReversalOutcome): string {
+  return outcome.expired
+    ? `${outcome.reference}: past its expiry date, so it becomes expired, not available (based on expiry date).`
+    : `${outcome.reference}: back in stock as available (based on expiry date).`;
+}
+
 /**
  * After a lost connection we can't tell whether the action happened, so we reload and say what
  * the request shows now. `state` is null when that reload failed too. `subject` names the request
