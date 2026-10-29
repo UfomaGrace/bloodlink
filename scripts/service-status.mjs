@@ -21,7 +21,7 @@ const mapped = [...code.matchAll(/@(?:Get|Post|Put|Patch|Delete|Request)Mapping\
 let missing = 0;
 for (const path of paths) {
   const shape = path.replace(/\{[^}]+\}/g, "{}");
-  const live = mapped.includes(shape) || path === "/actuator/health";
+  const live = mapped.includes(shape) || path.startsWith("/actuator/");
   if (!live) missing++;
   console.log(`${live ? "built  " : "MISSING"}  ${path}`);
 }
