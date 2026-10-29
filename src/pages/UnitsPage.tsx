@@ -7,6 +7,7 @@
 // - useAsync re-runs GET /units when a filter or the page changes and aborts the old request.
 // - States: loading, error (+ Retry), empty (no units yet / no matches), list.
 // - Wide screens get a table; phones get stacked cards. Both read from the same data.
+// - Each reference links to the unit's own page (/units/:unitId).
 
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { api } from "../api/endpoints";
@@ -81,6 +82,11 @@ const focusRing =
 const primaryLink = cn(
   "inline-flex min-h-11 items-center justify-center rounded-md px-4 text-sm font-medium",
   "bg-(--color-primary) text-(--color-on-primary) hover:bg-(--color-primary-hover)",
+  focusRing,
+);
+
+const unitLink = cn(
+  "inline-flex min-h-11 items-center rounded-sm wrap-break-word text-(--color-primary) underline underline-offset-2",
   focusRing,
 );
 
@@ -277,6 +283,15 @@ function Results({
   );
 }
 
+/** The reference, linking to the unit's own page. */
+function UnitLink({ unit }: { unit: Unit }) {
+  return (
+    <Link to={`/units/${encodeURIComponent(unit.id)}`} className={unitLink}>
+      {unit.reference}
+    </Link>
+  );
+}
+
 function StateBadge({ unit }: { unit: Unit }) {
   return <StatusBadge tone={UNIT_STATE_TONES[unit.state]}>{UNIT_STATE_LABELS[unit.state]}</StatusBadge>;
 }
@@ -299,7 +314,9 @@ function UnitTable({ units }: { units: Unit[] }) {
         <tbody>
           {units.map((unit) => (
             <tr key={unit.id} className="border-t border-border">
-              <td className="px-4 py-3 font-medium wrap-break-word">{unit.reference}</td>
+              <td className="px-4 py-3 font-medium wrap-break-word">
+                <UnitLink unit={unit} />
+              </td>
               <td className="px-4 py-3">{bloodTypeLabel(unit.bloodGroup, unit.rhesus)}</td>
               <td className="px-4 py-3">{COMPONENT_LABELS[unit.component]}</td>
               <td className="px-4 py-3 whitespace-nowrap">{formatDate(unit.collectionDate)}</td>
@@ -322,7 +339,9 @@ function UnitCards({ units }: { units: Unit[] }) {
       {units.map((unit) => (
         <li key={unit.id} className="rounded-md border border-border bg-surface p-4">
           <div className="flex items-start justify-between gap-3">
-            <h3 className="min-w-0 font-semibold wrap-break-word">{unit.reference}</h3>
+            <h3 className="min-w-0 font-semibold wrap-break-word">
+              <UnitLink unit={unit} />
+            </h3>
             <StateBadge unit={unit} />
           </div>
           <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">

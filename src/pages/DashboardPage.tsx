@@ -506,8 +506,9 @@ function UnitsExpiringSoon({ data, now }: { data: Dashboard; now: number }) {
           {data.unitsExpiringSoon.map((unit) => (
             <li key={unit.id} className={tile}>
               <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                {/* TODO: link to /units/:unitId once the unit detail page (getUnit) is in. */}
-                <span className="font-semibold wrap-break-word">{unit.reference}</span>
+                <Link to={`/units/${encodeURIComponent(unit.id)}`} className={cn(textLink, "font-semibold")}>
+                  {unit.reference}
+                </Link>
                 <StatusBadge tone={UNIT_STATE_TONES[unit.state]}>{UNIT_STATE_LABELS[unit.state]}</StatusBadge>
               </div>
               <p className="text-sm">

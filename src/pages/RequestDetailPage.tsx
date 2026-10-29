@@ -58,6 +58,8 @@
 //   for, so a clock that runs ahead of the service's can't cause a reload loop.
 // - Closed states (DECLINED, LAPSED, UNIT_EXPIRED, CANCELLED, FULFILLED) each get a banner
 //   saying in plain words what happened.
+// - Reserved unit references link to /units/:unitId for staff of the addressed bank and the
+//   administrator (actsForBank). Hospital staff get plain text: GET /units/{id} answers them 403.
 
 import { Form, Formik, type FormikHelpers } from "formik";
 import { useState, type ReactNode } from "react";
@@ -65,11 +67,12 @@ import { Link, useParams } from "react-router";
 import * as Yup from "yup";
 import { IS_MOCK, toApiError, type ApiError } from "../api/client";
 import { api } from "../api/endpoints";
-import type { BloodRequest, FieldIssue, HistoryEntry, RequestState, Reservation } from "../api/types";
+import type { BloodRequest, FieldIssue, RequestState, Reservation } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { applyApiError } from "../components/form/applyApiError";
 import { FormAlert } from "../components/form/FormAlert";
 import { FormikTextarea } from "../components/form/FormikTextarea";
+import { HistoryList } from "../components/HistoryList";
 import { CancelRequestDialog, cancelReopened, type CancelReopened } from "../components/CancelRequestDialog";
 import { MockControls } from "../components/MockControls";
 import { RequestStateBadge } from "../components/RequestStateBadge";
@@ -86,7 +89,6 @@ import {
   formatDate,
   formatDateTime,
   formatTime,
-  historyEventLabel,
   RESERVATION_STATUS_LABELS,
   RESERVATION_STATUS_TONES,
   timeAgo,
@@ -587,9 +589,11 @@ function RequestDetail({ requestId }: { requestId: string }) {
         <OutcomeBanner request={request} />
       </section>
 
-      {request.reservations.length > 0 && <Reservations reservations={request.reservations} now={now} />}
+      {request.reservations.length > 0 && (
+        <Reservations reservations={request.reservations} now={now} linkUnits={actsForBank(request, viewer)} />
+      )}
 
-      <History history={request.history} />
+      <HistoryList history={request.history} order="oldest" />
 
       <ConfirmDialog
         open={approveOpen}
@@ -747,7 +751,16 @@ function HoldCell({ reservation, now }: { reservation: Reservation; now: number 
   );
 }
 
-function Reservations({ reservations, now }: { reservations: Reservation[]; now: number }) {
+function Reservations({
+  reservations,
+  now,
+  linkUnits,
+}: {
+  reservations: Reservation[];
+  now: number;
+  /** Bank staff and the administrator can open a unit; the hospital can't (GET /units/{id} is 403). */
+  linkUnits: boolean;
+}) {
   return (
     <section aria-labelledby="reservations-heading" className="mt-8">
       <h2 id="reservations-heading" className="text-lg font-semibold">
@@ -768,7 +781,15 @@ function Reservations({ reservations, now }: { reservations: Reservation[]; now:
           <tbody>
             {reservations.map((reservation) => (
               <tr key={reservation.id} className="border-t border-border">
-                <td className="px-4 py-3 font-medium wrap-break-word">{reservation.unit.reference}</td>
+                <td className="px-4 py-3 font-medium wrap-break-word">
+                  {linkUnits ? (
+                    <Link to={`/units/${encodeURIComponent(reservation.unit.id)}`} className={backLink}>
+                      {reservation.unit.reference}
+                    </Link>
+                  ) : (
+                    reservation.unit.reference
+                  )}
+                </td>
                 <td className="px-4 py-3 whitespace-nowrap">{formatDate(reservation.unit.expiryDate)}</td>
                 <td className="px-4 py-3">
                   <StatusBadge tone={RESERVATION_STATUS_TONES[reservation.status]}>
@@ -787,34 +808,3 @@ function Reservations({ reservations, now }: { reservations: Reservation[]; now:
   );
 }
 
-function History({ history }: { history: HistoryEntry[] }) {
-  // The contract says oldest first; sort anyway so the timeline never reads backwards.
-  const entries = [...history].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
-
-  return (
-    <section aria-labelledby="history-heading" className="mt-8">
-      <h2 id="history-heading" className="text-lg font-semibold">
-        History
-      </h2>
-      {entries.length === 0 ? (
-        <p className="mt-2 text-sm text-muted-foreground">Nothing has happened yet.</p>
-      ) : (
-        <ol className="mt-3 flex flex-col gap-4 border-l-2 border-border pl-4">
-          {entries.map((entry, i) => (
-            <li key={`${entry.at}-${entry.event}-${i}`} className="relative text-sm">
-              <span
-                aria-hidden="true"
-                className="absolute top-1.5 -left-5.25 size-2 rounded-full bg-muted-foreground"
-              />
-              <p className="font-medium">{historyEventLabel(entry.event)}</p>
-              <p className="text-muted-foreground">
-                <time dateTime={entry.at}>{formatDateTime(entry.at)}</time> · {entry.actor}
-              </p>
-              {entry.note && <p className="mt-1 whitespace-pre-line wrap-break-word">{entry.note}</p>}
-            </li>
-          ))}
-        </ol>
-      )}
-    </section>
-  );
-}

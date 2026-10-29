@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isUnitExpired, lagosToday } from "./expiry";
+import { daysUntilExpiry, isUnitExpired, lagosToday } from "./expiry";
 
 const at = (iso: string) => Date.parse(iso);
 
@@ -40,5 +40,21 @@ describe("isUnitExpired", () => {
   it("is still usable just after UTC midnight before the expiry date, when Lagos is on the same day", () => {
     // 29 Nov 23:30 UTC is 30 Nov 00:30 in Lagos: the expiry date, so still usable.
     expect(isUnitExpired(expiry, at("2026-11-29T23:30:00Z"))).toBe(false);
+  });
+});
+
+describe("daysUntilExpiry", () => {
+  const now = at("2026-10-29T12:00:00Z"); // 13:00 in Lagos
+
+  it("counts Lagos calendar days", () => {
+    expect(daysUntilExpiry("2026-10-29", now)).toBe(0);
+    expect(daysUntilExpiry("2026-11-01", now)).toBe(3);
+    expect(daysUntilExpiry("2026-10-28", now)).toBe(-1);
+    // 23:30 UTC on 31 Oct is already 1 Nov in Lagos.
+    expect(daysUntilExpiry("2026-11-01", at("2026-10-31T23:30:00Z"))).toBe(0);
+  });
+
+  it("is NaN for something that is not a date", () => {
+    expect(daysUntilExpiry("soon", now)).toBeNaN();
   });
 });

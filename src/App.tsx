@@ -14,6 +14,7 @@ const NewRequestPage = lazy(() => import("./pages/NewRequestPage"));
 const RecordUnitPage = lazy(() => import("./pages/RecordUnitPage"));
 const RequestDetailPage = lazy(() => import("./pages/RequestDetailPage"));
 const RequestsPage = lazy(() => import("./pages/RequestsPage"));
+const UnitDetailPage = lazy(() => import("./pages/UnitDetailPage"));
 const UnitsPage = lazy(() => import("./pages/UnitsPage"));
 
 // Who can open each screen. The nav in Layout shows the same set.
@@ -93,6 +94,14 @@ export default function App() {
                 element={
                   <RequireRole roles={BANK_ONLY}>
                     <RecordUnitPage />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="units/:unitId"
+                element={
+                  <RequireRole roles={BANK_AND_ADMIN}>
+                    <UnitDetailPage />
                   </RequireRole>
                 }
               />

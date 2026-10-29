@@ -7,13 +7,12 @@
 // - `now` is always passed in (milliseconds), so the helpers stay pure and easy to test.
 
 import type { ActivityEntry, Dashboard, GroupCount, HoldEndingSoon, Organisation } from "../api/types";
-import { lagosToday } from "./expiry";
+import { daysUntilExpiry } from "./expiry";
 import { BLOOD_GROUP_LABELS, bloodTypeLabel, durationLabel, keysOf, RHESUS_LABELS } from "./labels";
 import type { HoldTiming } from "./holds";
 
 const GROUP_ORDER = keysOf(BLOOD_GROUP_LABELS);
 const RHESUS_ORDER = keysOf(RHESUS_LABELS);
-const DAY_MS = 24 * 60 * 60_000;
 
 /** "All banks" when the service summarised every bank (bank is null), otherwise the bank's name. */
 export function dashboardScopeLabel(bank: Organisation | null | undefined): string {
@@ -79,15 +78,6 @@ export function holdTimeLeft(holdExpiresAt: string, now: number): HoldTimeLeft {
   if (Number.isNaN(end)) return { lapsed: false, label: "" };
   if (end <= now) return { lapsed: true, label: "Lapsed" };
   return { lapsed: false, label: `${durationLabel(end - now)} left` };
-}
-
-function dayNumber(isoDate: string): number {
-  return Date.parse(`${isoDate}T00:00:00Z`) / DAY_MS;
-}
-
-/** Whole days from the Lagos date at `now` to `expiryDate` (0 on the day, negative once past). NaN if not a date. */
-export function daysUntilExpiry(expiryDate: string, now: number): number {
-  return dayNumber(expiryDate) - dayNumber(lagosToday(now));
 }
 
 /** "Expires today", "Expires tomorrow", "Expires in 3 days", "Expired". Not a date → "". */

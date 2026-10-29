@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { Dashboard, GroupCount, Organisation } from "../api/types";
 import {
   barPercent,
-  daysUntilExpiry,
   dashboardScopeLabel,
   expiryLabel,
   groupRows,
@@ -108,14 +107,7 @@ describe("holdClockEntries", () => {
   });
 });
 
-describe("daysUntilExpiry and expiryLabel", () => {
-  it("counts Lagos calendar days", () => {
-    expect(daysUntilExpiry("2026-10-29", NOW)).toBe(0);
-    expect(daysUntilExpiry("2026-11-01", NOW)).toBe(3);
-    // 23:30 UTC on 31 Oct is already 1 Nov in Lagos.
-    expect(daysUntilExpiry("2026-11-01", Date.parse("2026-10-31T23:30:00Z"))).toBe(0);
-  });
-
+describe("expiryLabel", () => {
   it("labels today, tomorrow, later and past", () => {
     expect(expiryLabel("2026-10-29", NOW)).toBe("Expires today");
     expect(expiryLabel("2026-10-30", NOW)).toBe("Expires tomorrow");
