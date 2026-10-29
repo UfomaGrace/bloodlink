@@ -34,20 +34,28 @@ export async function listSlotsInArea(
 }
 
 /**
- * The bookings the caller can see for one slot: a donor's own, or every booking for a bank's slot.
- * WORKAROUND: listBookings has no `slotId` parameter yet, so we read every page at the
- * contract's largest size and keep the slot's bookings. When the service adds `slotId`, send it
- * and read one page.
+ * Every booking the caller can see (a donor's own, a bank's slots', or all for the administrator),
+ * read page by page at the contract's largest size. Not a workaround: GET /bookings is paged,
+ * and "upcoming" and "past" need the whole list to be split correctly.
  */
-export async function listSlotBookings(slotId: string, signal?: AbortSignal): Promise<Booking[]> {
+export async function listAllBookings(signal?: AbortSignal): Promise<Booking[]> {
   const found: Booking[] = [];
   for (let page = 0; page < MAX_BOOKING_PAGES; page++) {
     const { data } = await api.listBookings({ page, size: BOOKINGS_PAGE_SIZE }, signal);
-    found.push(...data.items.filter((booking) => booking.slot.id === slotId));
+    found.push(...data.items);
     const read = (page + 1) * BOOKINGS_PAGE_SIZE;
     if (data.items.length === 0 || read >= data.totalItems) break;
   }
   return found;
+}
+
+/**
+ * The bookings the caller can see for one slot: a donor's own, or every booking for a bank's slot.
+ * WORKAROUND: listBookings has no `slotId` parameter yet, so we read every page and keep the
+ * slot's bookings. When the service adds `slotId`, send it here and drop the filter.
+ */
+export async function listSlotBookings(slotId: string, signal?: AbortSignal): Promise<Booking[]> {
+  return (await listAllBookings(signal)).filter((booking) => booking.slot.id === slotId);
 }
 
 function normaliseArea(area: string): string {

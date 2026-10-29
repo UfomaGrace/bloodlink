@@ -5,7 +5,16 @@
 // - Dates from the contract are plain "YYYY-MM-DD" strings. We format them by hand,
 //   without Date's time zone, so "2026-11-30" never shows as 29 Nov west of UTC.
 
-import type { BloodGroup, Component, RequestState, ReservationStatus, Rhesus, UnitState, Urgency } from "../api/types";
+import type {
+  BloodGroup,
+  BookingStatus,
+  Component,
+  RequestState,
+  ReservationStatus,
+  Rhesus,
+  UnitState,
+  Urgency,
+} from "../api/types";
 import type { StatusBadgeTone } from "../shared/ui/status-badge";
 
 export const BLOOD_GROUP_LABELS: Record<BloodGroup, string> = {
@@ -214,3 +223,17 @@ export function timeAgo(isoDateTime: string, now: number = Date.now()): string {
   const days = Math.floor(hours / 24);
   return days === 1 ? "1 day ago" : `${days} days ago`;
 }
+
+export const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
+  BOOKED: "Booked",
+  CANCELLED: "Cancelled",
+  ATTENDED: "Attended",
+  NO_SHOW: "Did not attend",
+};
+
+export const BOOKING_STATUS_TONES: Record<BookingStatus, StatusBadgeTone> = {
+  BOOKED: "info",
+  CANCELLED: "neutral",
+  ATTENDED: "success",
+  NO_SHOW: "warning",
+};

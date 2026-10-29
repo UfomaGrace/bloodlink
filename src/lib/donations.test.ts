@@ -1,18 +1,23 @@
 import { describe, expect, it } from "vitest";
-import type { DonationSlot } from "../api/types";
+import type { Booking, DonationSlot } from "../api/types";
 import {
   addDays,
   bookingClosedReason,
   bookingRefusal,
   canBook,
+  cancelBookingRefusal,
+  canCancelBooking,
   canCreateSlot,
   checkSlotRange,
   formatLagosDay,
   formatLagosTime,
+  hasSlotEnded,
   hasSlotStarted,
   placesLeftLabel,
   slotTimeRangeLabel,
   slotWhenLabel,
+  splitBookings,
+  unconfirmedCancelMessage,
 } from "./donations";
 import type { Viewer } from "./requestActions";
 
@@ -158,5 +163,79 @@ describe("bookingRefusal", () => {
   it("leaves other errors to the service's own message", () => {
     expect(bookingRefusal("FORBIDDEN")).toBeNull();
     expect(bookingRefusal("TIMEOUT")).toBeNull();
+  });
+});
+
+function booking(id: string, status: Booking["status"], startsAt: string, endsAt: string): Booking {
+  return {
+    id,
+    slot: slot({ startsAt, endsAt }),
+    donor: { id: "donor-1", displayName: "Ngozi" },
+    status,
+    createdAt: "2026-10-20T10:00:00Z",
+  };
+}
+
+describe("splitBookings", () => {
+  const tomorrow = booking("tomorrow", "BOOKED", "2026-10-30T08:00:00Z", "2026-10-30T09:00:00Z");
+  const nextWeek = booking("next-week", "CANCELLED", "2026-11-05T08:00:00Z", "2026-11-05T09:00:00Z");
+  const running = booking("running", "BOOKED", "2026-10-29T09:30:00Z", "2026-10-29T10:30:00Z");
+  const lastWeek = booking("last-week", "ATTENDED", "2026-10-22T08:00:00Z", "2026-10-22T09:00:00Z");
+  const lastMonth = booking("last-month", "NO_SHOW", "2026-09-29T08:00:00Z", "2026-09-29T09:00:00Z");
+
+  it("puts slots that haven't ended in upcoming, soonest first, including one running now", () => {
+    const { upcoming } = splitBookings([nextWeek, lastWeek, tomorrow, running, lastMonth], NOW);
+    expect(upcoming.map((b) => b.id)).toEqual(["running", "tomorrow", "next-week"]);
+  });
+
+  it("puts ended slots in past, most recent first", () => {
+    const { past } = splitBookings([lastMonth, tomorrow, lastWeek], NOW);
+    expect(past.map((b) => b.id)).toEqual(["last-week", "last-month"]);
+  });
+
+  it("counts the end time itself as ended", () => {
+    const ending = booking("ending", "BOOKED", "2026-10-29T09:00:00Z", "2026-10-29T10:00:00Z");
+    expect(hasSlotEnded(ending.slot, NOW)).toBe(true);
+    expect(splitBookings([ending], NOW).past).toHaveLength(1);
+  });
+});
+
+describe("which actions a role can take on a booking", () => {
+  const upcoming = booking("b", "BOOKED", "2026-10-30T08:00:00Z", "2026-10-30T09:00:00Z");
+
+  it("lets a donor cancel a BOOKED booking before the slot starts", () => {
+    expect(canCancelBooking(upcoming, donor, NOW)).toBe(true);
+  });
+
+  it("not once the slot has started", () => {
+    const started = booking("b", "BOOKED", "2026-10-29T09:30:00Z", "2026-10-29T10:30:00Z");
+    expect(canCancelBooking(started, donor, NOW)).toBe(false);
+  });
+
+  it("not once cancelled, attended or a no-show", () => {
+    for (const status of ["CANCELLED", "ATTENDED", "NO_SHOW"] as const) {
+      expect(canCancelBooking({ ...upcoming, status }, donor, NOW)).toBe(false);
+    }
+  });
+
+  it("never for bank staff, the administrator or hospital staff (the donor's own only)", () => {
+    for (const viewer of [bankStaff, admin, hospital]) expect(canCancelBooking(upcoming, viewer, NOW)).toBe(false);
+  });
+});
+
+describe("cancelBookingRefusal and unconfirmedCancelMessage", () => {
+  it("gives each 409 its own message, and leaves others to the service", () => {
+    expect(cancelBookingRefusal("BOOKING_NOT_ACTIVE")).toMatch(/already cancelled or recorded/);
+    expect(cancelBookingRefusal("SLOT_CLOSED")).toMatch(/has started, so the booking can't be cancelled/);
+    expect(cancelBookingRefusal("NOT_FOUND")).toBeNull();
+  });
+
+  it("says what the booking now shows after a lost connection", () => {
+    expect(unconfirmedCancelMessage("CANCELLED", "Lagos Central")).toBe(
+      "We couldn't confirm. Your booking for Lagos Central now shows as Cancelled.",
+    );
+    expect(unconfirmedCancelMessage("BOOKED", "Lagos Central")).toMatch(/now shows as Booked\.$/);
+    expect(unconfirmedCancelMessage(undefined, "Lagos Central")).toMatch(/no longer in your list/);
+    expect(unconfirmedCancelMessage(null, "Lagos Central")).toMatch(/or check your bookings/);
   });
 });

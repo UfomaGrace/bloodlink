@@ -1,4 +1,4 @@
-// Donations: slot wording, the date-range rule, Lagos times, and who can do what with a slot.
+// Donations: slot wording, the date-range rule, Lagos times, and who can do what with a slot or booking.
 //
 // - Slots run at banks in Lagos, so their times are shown in Africa/Lagos and labelled
 //   "Lagos time", whatever the viewer's own time zone. Lagos is UTC+1 all year: it has no
@@ -11,9 +11,9 @@
 // - Pure: `now` is passed in (milliseconds), so the rules are easy to test.
 
 import type { ClientErrorCode } from "../api/client";
-import type { DonationSlot } from "../api/types";
+import type { Booking, BookingStatus, DonationSlot } from "../api/types";
 import { lagosToday } from "./expiry";
-import { formatDate } from "./labels";
+import { BOOKING_STATUS_LABELS, formatDate } from "./labels";
 import type { Viewer } from "./requestActions";
 
 /** Most days `to` may be after `from` in GET /donation-slots. */
@@ -141,4 +141,55 @@ export function bookingRefusal(code: ClientErrorCode): BookingRefusal | null {
     default:
       return null;
   }
+}
+
+/** Ended: the slot's end time has passed. Until then a booking counts as upcoming. */
+export function hasSlotEnded(slot: Pick<DonationSlot, "endsAt">, now: number): boolean {
+  return Date.parse(slot.endsAt) <= now;
+}
+
+/**
+ * A donor's bookings split by their slot: upcoming (not ended yet, soonest first, including one
+ * running now) and past (ended, most recent first). Cancelled bookings stay where their slot falls.
+ */
+export function splitBookings(bookings: readonly Booking[], now: number): { upcoming: Booking[]; past: Booking[] } {
+  const byStart = (a: Booking, b: Booking) => Date.parse(a.slot.startsAt) - Date.parse(b.slot.startsAt);
+  return {
+    upcoming: bookings.filter((b) => !hasSlotEnded(b.slot, now)).sort(byStart),
+    past: bookings.filter((b) => hasSlotEnded(b.slot, now)).sort((a, b) => byStart(b, a)),
+  };
+}
+
+/**
+ * Cancel a booking: donors only, while it is BOOKED and the slot hasn't started (contract
+ * cancelBooking). The service also checks it is the donor's own (others get 404); a donor's
+ * GET /bookings holds only their own, so the role is enough to decide on the button.
+ */
+export function canCancelBooking(booking: Booking, viewer: Viewer, now: number): boolean {
+  return viewer.role === "DONOR" && booking.status === "BOOKED" && !hasSlotStarted(booking.slot, now);
+}
+
+/** Our words for each 409 from POST /bookings/{id}/cancellation, or null for any other error. */
+export function cancelBookingRefusal(code: ClientErrorCode): string | null {
+  switch (code) {
+    case "BOOKING_NOT_ACTIVE":
+      return "This booking was already cancelled or recorded, so there was nothing to cancel. The list now shows where it stands.";
+    case "SLOT_CLOSED":
+      return "This slot has started, so the booking can't be cancelled any more.";
+    default:
+      return null;
+  }
+}
+
+/**
+ * After a lost connection we can't tell whether the cancellation happened, so we read the
+ * bookings again and say what this one shows. `status` is undefined when it is no longer listed,
+ * null when that read failed too.
+ */
+export function unconfirmedCancelMessage(status: BookingStatus | null | undefined, where: string): string {
+  if (status === null) {
+    return "We couldn't confirm whether your booking was cancelled, or check your bookings. Check again before trying once more.";
+  }
+  if (status === undefined) return `We couldn't confirm. Your booking for ${where} is no longer in your list.`;
+  return `We couldn't confirm. Your booking for ${where} now shows as ${BOOKING_STATUS_LABELS[status]}.`;
 }

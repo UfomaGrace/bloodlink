@@ -9,6 +9,7 @@ import { Skeleton } from "./shared/ui/skeleton";
 // Each signed-in page is its own chunk, fetched the first time it is opened. LoginPage and
 // Layout stay in the main bundle, so the first screen and the frame never wait on a chunk.
 const AvailabilityPage = lazy(() => import("./pages/AvailabilityPage"));
+const BookingsPage = lazy(() => import("./pages/BookingsPage"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const NewRequestPage = lazy(() => import("./pages/NewRequestPage"));
 const RecordUnitPage = lazy(() => import("./pages/RecordUnitPage"));
@@ -24,6 +25,7 @@ const BANK_AND_ADMIN: readonly Role[] = ["BANK_STAFF", "ADMIN"];
 const BANK_ONLY: readonly Role[] = ["BANK_STAFF"];
 const HOSPITAL_ONLY: readonly Role[] = ["HOSPITAL_STAFF"];
 const DONOR_BANK_AND_ADMIN: readonly Role[] = ["DONOR", "BANK_STAFF", "ADMIN"];
+const DONOR_ONLY: readonly Role[] = ["DONOR"];
 
 // Signed out → /login. Wraps every route except /login.
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -144,6 +146,14 @@ export default function App() {
                 element={
                   <RequireRole roles={DONOR_BANK_AND_ADMIN}>
                     <SlotsPage />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="bookings"
+                element={
+                  <RequireRole roles={DONOR_ONLY}>
+                    <BookingsPage />
                   </RequireRole>
                 }
               />

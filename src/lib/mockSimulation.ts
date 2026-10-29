@@ -16,9 +16,13 @@
 // reads as started. simulateSlots replaces the list with slots counted from `at`: some with
 // places left, a full one, one that has started (closed to bookings), or none (first use).
 // Display only: a booking still goes to Prism with the simulated slot's id.
+//
+// Bookings: Prism sends one canned booking in that started slot, so nothing can be cancelled.
+// simulateBookings gives upcoming ones (cancellable), one in a started slot, and past ones.
 
 import type {
   BloodRequest,
+  Booking,
   Dashboard,
   DonationSlot,
   DonationSlotList,
@@ -208,7 +212,7 @@ function lagosAt(at: number, daysAhead: number, time: string): string {
 
 function sampleSlot(n: number, bank: Organisation, startsAt: string, endsAt: string, capacity: number, booked: number): DonationSlot {
   return {
-    id: `9f4c1a2b-5d6e-4f7a-8b9c-0d1e2f3a4b0${n}`,
+    id: `9f4c1a2b-5d6e-4f7a-8b9c-0d1e2f3a4b${String(n).padStart(2, "0")}`,
     bank,
     startsAt,
     endsAt,
@@ -244,4 +248,39 @@ export function simulateSlots(state: SlotListSimulation, at: number): DonationSl
     case "EMPTY":
       return { computedAt, items: [] };
   }
+}
+
+export type BookingListSimulation = "SAMPLE" | "EMPTY";
+
+export const BOOKING_LIST_SIMULATION_LABELS: Record<BookingListSimulation, string> = {
+  SAMPLE: "Upcoming and past bookings",
+  EMPTY: "Empty (first use)",
+};
+
+function sampleBooking(n: number, slot: DonationSlot, status: Booking["status"], donorName: string, at: number): Booking {
+  return {
+    id: `a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c0${n}`,
+    slot,
+    donor: { id: "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d01", displayName: donorName },
+    status,
+    createdAt: new Date(at - 20 * DAY_MS).toISOString(),
+  };
+}
+
+/**
+ * A donor's bookings for `state`, with dates from `at` (ms): two upcoming they can cancel, one in
+ * a slot that has started (too late to cancel), one cancelled, and two past (attended, no-show).
+ */
+export function simulateBookings(state: BookingListSimulation, at: number, donorName: string): Booking[] {
+  if (state === "EMPTY") return [];
+  const [bankA, bankB] = SAMPLE_BANKS;
+  const minutes = (n: number) => new Date(at + n * MINUTE_MS).toISOString();
+  return [
+    sampleBooking(1, sampleSlot(11, bankA, lagosAt(at, 1, "09:00"), lagosAt(at, 1, "11:00"), 10, 7), "BOOKED", donorName, at),
+    sampleBooking(2, sampleSlot(12, bankB, lagosAt(at, 4, "13:00"), lagosAt(at, 4, "15:00"), 6, 2), "BOOKED", donorName, at),
+    sampleBooking(3, sampleSlot(13, bankA, minutes(-30), minutes(90), 8, 5), "BOOKED", donorName, at),
+    sampleBooking(4, sampleSlot(14, bankB, lagosAt(at, 2, "10:00"), lagosAt(at, 2, "12:00"), 6, 3), "CANCELLED", donorName, at),
+    sampleBooking(5, sampleSlot(15, bankA, lagosAt(at, -7, "09:00"), lagosAt(at, -7, "11:00"), 10, 9), "ATTENDED", donorName, at),
+    sampleBooking(6, sampleSlot(16, bankB, lagosAt(at, -14, "14:00"), lagosAt(at, -14, "16:00"), 6, 6), "NO_SHOW", donorName, at),
+  ];
 }

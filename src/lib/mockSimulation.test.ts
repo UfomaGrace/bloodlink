@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { BloodRequest, Reservation } from "../api/types";
 import { withPassedHolds } from "./holds";
 import { canIssue, expiredHeldUnits, type Viewer } from "./requestActions";
-import { SIMULATED_HOLD_MS, simulateRequest, simulateSlots } from "./mockSimulation";
+import { canCancelBooking, hasSlotEnded, hasSlotStarted, splitBookings } from "./donations";
+import { SIMULATED_HOLD_MS, simulateBookings, simulateRequest, simulateSlots } from "./mockSimulation";
 
 const at = (iso: string) => Date.parse(iso);
 const PICKED = at("2026-10-28T10:00:00Z");
@@ -106,5 +107,29 @@ describe("simulateSlots", () => {
   it("puts sample times on the Lagos clock (+01:00, no daylight saving)", () => {
     const [first] = simulateSlots("PLACES_LEFT", PICKED).items;
     expect(first.startsAt).toBe("2026-10-29T08:00:00.000Z"); // 09:00 Lagos, the day after PICKED
+  });
+});
+
+describe("simulateBookings", () => {
+  it("gives cancellable upcoming bookings, one in a started slot, and past ones, from the moment picked", () => {
+    const bookings = simulateBookings("SAMPLE", PICKED, "Ngozi Adeyemi (demo)");
+    const donor = { role: "DONOR", organisationId: null } as const;
+    expect(bookings.filter((b) => canCancelBooking(b, donor, PICKED))).toHaveLength(2);
+    expect(bookings.some((b) => b.status === "BOOKED" && hasSlotStarted(b.slot, PICKED) && !hasSlotEnded(b.slot, PICKED))).toBe(true);
+    const { past } = splitBookings(bookings, PICKED);
+    expect(past.map((b) => b.status)).toEqual(["ATTENDED", "NO_SHOW"]);
+    expect(bookings.every((b) => b.donor.displayName === "Ngozi Adeyemi (demo)")).toBe(true);
+  });
+
+  it("uses well-formed ids, since a cancellation sends them to the mock", () => {
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+    for (const b of simulateBookings("SAMPLE", PICKED, "Ngozi")) {
+      expect(b.id).toMatch(uuid);
+      expect(b.slot.id).toMatch(uuid);
+    }
+  });
+
+  it("Empty (first use): no bookings", () => {
+    expect(simulateBookings("EMPTY", PICKED, "Ngozi")).toEqual([]);
   });
 });

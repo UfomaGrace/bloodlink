@@ -219,7 +219,7 @@ export default function SlotsPage() {
     } catch {
       setNotice({
         tone: "info",
-        message: "We couldn't confirm whether you were booked, or check your bookings. Check again before booking once more.",
+        message: "We couldn't confirm whether you were booked, or check your bookings. Check My bookings before booking once more.",
       });
     }
     reloadQuietly();

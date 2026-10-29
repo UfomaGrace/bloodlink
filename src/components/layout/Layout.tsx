@@ -29,13 +29,14 @@ const UNITS: NavItem = { to: "/units", label: "Units" };
 const RECORD_UNIT: NavItem = { to: "/units/new", label: "Record unit" };
 const FIND_BLOOD: NavItem = { to: "/availability", label: "Find blood" };
 const SLOTS: NavItem = { to: "/slots", label: "Donation slots" };
+const MY_BOOKINGS: NavItem = { to: "/bookings", label: "My bookings" };
 
 // Each role gets its own list, in the order that role uses them most.
 const NAV_BY_ROLE: Record<Role, readonly NavItem[]> = {
   BANK_STAFF: [DASHBOARD, REQUESTS, UNITS, RECORD_UNIT, SLOTS],
   HOSPITAL_STAFF: [FIND_BLOOD, REQUESTS],
   ADMIN: [DASHBOARD, REQUESTS, UNITS, FIND_BLOOD, SLOTS],
-  DONOR: [SLOTS],
+  DONOR: [SLOTS, MY_BOOKINGS],
 };
 
 // Shown under the name when the user has no organisation (administrator, donor).

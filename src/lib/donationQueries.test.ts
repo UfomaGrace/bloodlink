@@ -4,7 +4,7 @@ import type { Booking, DonationSlot } from "../api/types";
 const mocks = vi.hoisted(() => ({ listDonationSlots: vi.fn(), listBookings: vi.fn() }));
 vi.mock("../api/endpoints", () => ({ api: mocks }));
 
-const { listSlotBookings, listSlotsInArea } = await import("./donationQueries");
+const { listAllBookings, listSlotBookings, listSlotsInArea } = await import("./donationQueries");
 
 function slot(id: string, area: string): DonationSlot {
   return {
@@ -71,6 +71,14 @@ describe("listSlotBookings (no `slotId` on listBookings yet)", () => {
   it("stops at an empty page even if the total says there is more", async () => {
     mocks.listBookings.mockResolvedValue(ok({ items: [], page: 0, size: 100, totalItems: 500 }));
     expect(await listSlotBookings("wanted")).toEqual([]);
+    expect(mocks.listBookings).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("listAllBookings", () => {
+  it("stops when the total is nonsense (Prism sends a negative one)", async () => {
+    mocks.listBookings.mockResolvedValue(ok({ items: [booking("b-1", "s")], page: -2147483648, size: -2147483648, totalItems: -9007199254740991 }));
+    expect((await listAllBookings()).map((b) => b.id)).toEqual(["b-1"]);
     expect(mocks.listBookings).toHaveBeenCalledTimes(1);
   });
 });
