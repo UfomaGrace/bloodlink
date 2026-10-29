@@ -11,7 +11,7 @@
 // - Pure: `now` is passed in (milliseconds), so the rules are easy to test.
 
 import type { ClientErrorCode } from "../api/client";
-import type { Booking, BookingStatus, DonationSlot } from "../api/types";
+import type { Attendance, Booking, BookingStatus, DonationSlot } from "../api/types";
 import { lagosToday } from "./expiry";
 import { BOOKING_STATUS_LABELS, formatDate } from "./labels";
 import type { Viewer } from "./requestActions";
@@ -219,4 +219,51 @@ export function findSlotWithTimes(
   const start = Date.parse(startsAt);
   const end = Date.parse(endsAt);
   return slots.find((slot) => Date.parse(slot.startsAt) === start && Date.parse(slot.endsAt) === end);
+}
+
+/** "7 of 10 places used" (booked counts BOOKED and ATTENDED, as the contract defines it). */
+export function placesUsedLabel(slot: Pick<DonationSlot, "booked" | "capacity">): string {
+  return `${slot.booked} of ${slot.capacity} ${slot.capacity === 1 ? "place" : "places"} used`;
+}
+
+/** Staff of the bank that runs the slot, or the administrator: they see its bookings. */
+export function canManageSlot(slot: Pick<DonationSlot, "bank">, viewer: Viewer): boolean {
+  if (viewer.role === "ADMIN") return true;
+  return viewer.role === "BANK_STAFF" && viewer.organisationId !== null && viewer.organisationId === slot.bank.id;
+}
+
+/**
+ * Record attended or no-show: the slot's bank or the administrator, once the slot has started,
+ * for a BOOKED booking (contract recordAttendance). Donors, hospital staff and staff of another
+ * bank never get it.
+ */
+export function canRecordAttendance(booking: Booking, viewer: Viewer, now: number): boolean {
+  return booking.status === "BOOKED" && hasSlotStarted(booking.slot, now) && canManageSlot(booking.slot, viewer);
+}
+
+export type AttendanceOutcome = Attendance["outcome"];
+
+/** Our words for each 409 from POST /bookings/{id}/attendance, or null for any other error. */
+export function attendanceRefusal(code: ClientErrorCode): string | null {
+  switch (code) {
+    case "BOOKING_NOT_ACTIVE":
+      return "This booking was already recorded or cancelled, so nothing changed. The list now shows where it stands.";
+    case "SLOT_NOT_STARTED":
+      return "This slot hasn't started yet, so attendance can't be recorded. Try again once it starts.";
+    default:
+      return null;
+  }
+}
+
+/**
+ * After a lost connection we can't tell whether the outcome was recorded, so we read the bookings
+ * again and say what this one shows. `status` is undefined when it is no longer listed, null when
+ * that read failed too.
+ */
+export function unconfirmedAttendanceMessage(status: BookingStatus | null | undefined, donorName: string): string {
+  if (status === null) {
+    return `We couldn't confirm whether ${donorName}'s attendance was recorded, or check the bookings. Check again before recording it once more.`;
+  }
+  if (status === undefined) return `We couldn't confirm. ${donorName}'s booking is no longer in this slot's list.`;
+  return `We couldn't confirm. ${donorName}'s booking now shows as ${BOOKING_STATUS_LABELS[status]}.`;
 }

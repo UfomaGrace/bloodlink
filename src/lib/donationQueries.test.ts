@@ -4,7 +4,7 @@ import type { Booking, DonationSlot } from "../api/types";
 const mocks = vi.hoisted(() => ({ listDonationSlots: vi.fn(), listBookings: vi.fn() }));
 vi.mock("../api/endpoints", () => ({ api: mocks }));
 
-const { listAllBookings, listSlotBookings, listSlotsInArea } = await import("./donationQueries");
+const { getSlotWithBookings, listAllBookings, listSlotBookings, listSlotsInArea } = await import("./donationQueries");
 
 function slot(id: string, area: string): DonationSlot {
   return {
@@ -80,5 +80,27 @@ describe("listAllBookings", () => {
     mocks.listBookings.mockResolvedValue(ok({ items: [booking("b-1", "s")], page: -2147483648, size: -2147483648, totalItems: -9007199254740991 }));
     expect((await listAllBookings()).map((b) => b.id)).toEqual(["b-1"]);
     expect(mocks.listBookings).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("getSlotWithBookings (no GET /donation-slots/{slotId} yet)", () => {
+  it("takes the slot's details from its bookings, read just now", async () => {
+    mocks.listBookings.mockResolvedValue(ok({ items: [booking("b-1", "wanted"), booking("b-2", "other")], page: 0, size: 100, totalItems: 2 }));
+    const stale = { ...slot("wanted", "Ikeja"), placesLeft: 99 };
+    const result = await getSlotWithBookings("wanted", stale);
+    expect(result.bookings.map((b) => b.id)).toEqual(["b-1"]);
+    expect(result.slot?.placesLeft).toBe(4);
+  });
+
+  it("falls back to the copy passed from the list when nobody has booked", async () => {
+    mocks.listBookings.mockResolvedValue(ok({ items: [], page: 0, size: 100, totalItems: 0 }));
+    const known = slot("wanted", "Ikeja");
+    expect(await getSlotWithBookings("wanted", known)).toEqual({ slot: known, bookings: [] });
+  });
+
+  it("has no details with neither, and ignores a passed copy of another slot", async () => {
+    mocks.listBookings.mockResolvedValue(ok({ items: [], page: 0, size: 100, totalItems: 0 }));
+    expect((await getSlotWithBookings("wanted", null)).slot).toBeNull();
+    expect((await getSlotWithBookings("wanted", slot("other", "Ikeja"))).slot).toBeNull();
   });
 });

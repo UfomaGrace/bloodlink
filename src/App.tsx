@@ -16,6 +16,7 @@ const NewSlotPage = lazy(() => import("./pages/NewSlotPage"));
 const RecordUnitPage = lazy(() => import("./pages/RecordUnitPage"));
 const RequestDetailPage = lazy(() => import("./pages/RequestDetailPage"));
 const RequestsPage = lazy(() => import("./pages/RequestsPage"));
+const SlotDetailPage = lazy(() => import("./pages/SlotDetailPage"));
 const SlotsPage = lazy(() => import("./pages/SlotsPage"));
 const UnitDetailPage = lazy(() => import("./pages/UnitDetailPage"));
 const UnitsPage = lazy(() => import("./pages/UnitsPage"));
@@ -155,6 +156,14 @@ export default function App() {
                 element={
                   <RequireRole roles={BANK_ONLY}>
                     <NewSlotPage />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="slots/:slotId"
+                element={
+                  <RequireRole roles={BANK_AND_ADMIN}>
+                    <SlotDetailPage />
                   </RequireRole>
                 }
               />

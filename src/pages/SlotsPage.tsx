@@ -18,7 +18,8 @@
 //     409 SLOT_FULL, SLOT_CLOSED, ALREADY_BOOKED → each its own message (bookingRefusal), and a reload.
 //     Lost connection or timeout → no retry. We read the donor's bookings for that slot
 //       (listSlotBookings) and the list again, then say whether a booking now shows.
-//   Bank staff and the administrator see the same list without Book.
+//   Bank staff and the administrator see the same list without Book; on their own bank's slots
+//   (any slot, for the administrator) "View bookings" opens /slots/:slotId with the slot in router state.
 // - States: loading, error (+ Try again, Reference), first use, no matches, list, refreshing.
 // - Mock only: "Simulate state" swaps in slots with places left, a full one, a started one, or
 //   none, with dates counted from the moment it is picked. "Force response" makes Prism refuse the
@@ -45,6 +46,7 @@ import {
   bookingRefusal,
   canBook,
   canCreateSlot,
+  canManageSlot,
   checkSlotRange,
   formatLagosDay,
   isIsoDate,
@@ -55,6 +57,7 @@ import {
 import type { LabelOption } from "../lib/labels";
 import { SLOT_LIST_SIMULATION_LABELS, simulateSlots, type SlotListSimulation } from "../lib/mockSimulation";
 import { viewerOf } from "../lib/requestActions";
+import type { SlotDetailState } from "./SlotDetailPage";
 import { cn } from "../shared/cn";
 import { Button } from "../shared/ui/button";
 import { ConfirmDialog } from "../shared/ui/dialog";
@@ -67,6 +70,12 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const focusRing =
   "focus-visible:[outline:var(--focus-ring-width)_solid_var(--color-focus)] focus-visible:outline-offset-(--focus-ring-offset)";
+
+const secondaryLink = cn(
+  "inline-flex min-h-11 items-center justify-center rounded-md px-4 text-sm font-medium",
+  "border border-(--color-border-input) bg-(--color-surface) text-(--color-text) hover:bg-(--color-surface-hover)",
+  focusRing,
+);
 
 const primaryLink = cn(
   "inline-flex min-h-11 items-center justify-center rounded-md px-4 text-sm font-medium",
@@ -340,6 +349,7 @@ export default function SlotsPage() {
           isDonor={isDonor}
           onNewSlot={canCreateSlot(viewer) ? () => navigate("/slots/new") : undefined}
           canBookSlot={(slot) => canBook(slot, viewer, now)}
+          canManage={(slot) => canManageSlot(slot, viewer)}
           closedReason={(slot) => bookingClosedReason(slot, now)}
           bookDisabled={inFlight !== null}
           onBook={openBook}
@@ -438,6 +448,7 @@ function Results({
   isDonor,
   onNewSlot,
   canBookSlot,
+  canManage,
   closedReason,
   bookDisabled,
   onBook,
@@ -453,6 +464,8 @@ function Results({
   /** Bank staff only: the first-use action. */
   onNewSlot?: () => void;
   canBookSlot: (slot: DonationSlot) => boolean;
+  /** The slot's bank or the administrator: they get "View bookings". */
+  canManage: (slot: DonationSlot) => boolean;
   closedReason: (slot: DonationSlot) => string | null;
   bookDisabled: boolean;
   onBook: (slot: DonationSlot) => void;
@@ -525,6 +538,7 @@ function Results({
             key={slot.id}
             slot={slot}
             showBook={isDonor}
+            manageable={canManage(slot)}
             bookable={canBookSlot(slot)}
             closedReason={closedReason(slot)}
             bookDisabled={bookDisabled}
@@ -539,6 +553,7 @@ function Results({
 function SlotCard({
   slot,
   showBook,
+  manageable,
   bookable,
   closedReason,
   bookDisabled,
@@ -546,6 +561,7 @@ function SlotCard({
 }: {
   slot: DonationSlot;
   showBook: boolean;
+  manageable: boolean;
   bookable: boolean;
   closedReason: string | null;
   bookDisabled: boolean;
@@ -565,6 +581,19 @@ function SlotCard({
         <dt className="text-muted-foreground">Places</dt>
         <dd className="min-w-0 font-medium">{placesLeftLabel(slot)}</dd>
       </dl>
+      {manageable && (
+        <div className="mt-auto pt-4">
+          {/* The slot travels in router state: the contract has no GET /donation-slots/{id} yet. */}
+          <Link
+            to={`/slots/${encodeURIComponent(slot.id)}`}
+            state={{ slot } satisfies SlotDetailState}
+            className={secondaryLink}
+            aria-label={`View bookings: ${slot.bank.name}, ${slotWhenLabel(slot)}`}
+          >
+            View bookings
+          </Link>
+        </div>
+      )}
       {showBook && (
         <div className="mt-auto pt-4">
           {bookable ? (

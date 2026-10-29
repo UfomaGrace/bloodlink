@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { BloodRequest, Reservation } from "../api/types";
 import { withPassedHolds } from "./holds";
 import { canIssue, expiredHeldUnits, type Viewer } from "./requestActions";
-import { canCancelBooking, hasSlotEnded, hasSlotStarted, splitBookings } from "./donations";
-import { SIMULATED_HOLD_MS, simulateBookings, simulateRequest, simulateSlots } from "./mockSimulation";
+import { canCancelBooking, canRecordAttendance, hasSlotEnded, hasSlotStarted, splitBookings } from "./donations";
+import { SIMULATED_HOLD_MS, simulateBookings, simulateRequest, simulateSlotDetail, simulateSlots } from "./mockSimulation";
 
 const at = (iso: string) => Date.parse(iso);
 const PICKED = at("2026-10-28T10:00:00Z");
@@ -131,5 +131,32 @@ describe("simulateBookings", () => {
 
   it("Empty (first use): no bookings", () => {
     expect(simulateBookings("EMPTY", PICKED, "Ngozi")).toEqual([]);
+  });
+});
+
+describe("simulateSlotDetail", () => {
+  const bank = { id: "bank-1", name: "Lagos Central", type: "BLOOD_BANK", area: "Ikeja" } as const;
+  const staff = { role: "BANK_STAFF", organisationId: "bank-1" } as const;
+
+  it("A started slot with bookings: the URL's slot, run by the viewer's bank, three to record", () => {
+    const { slot, bookings } = simulateSlotDetail("STARTED_WITH_BOOKINGS", PICKED, "slot-from-url", bank);
+    expect(slot.id).toBe("slot-from-url");
+    expect(hasSlotStarted(slot, PICKED) && !hasSlotEnded(slot, PICKED)).toBe(true);
+    expect(bookings.filter((b) => canRecordAttendance(b, staff, PICKED))).toHaveLength(3);
+    expect(slot.booked).toBe(4); // BOOKED and ATTENDED count; CANCELLED doesn't
+    expect(slot.placesLeft).toBe(slot.capacity - slot.booked);
+  });
+
+  it("Not started: bookings, none recordable yet", () => {
+    const { slot, bookings } = simulateSlotDetail("NOT_STARTED", PICKED, "s", bank);
+    expect(hasSlotStarted(slot, PICKED)).toBe(false);
+    expect(bookings).toHaveLength(2);
+    expect(bookings.some((b) => canRecordAttendance(b, staff, PICKED))).toBe(false);
+  });
+
+  it("No bookings yet: the slot alone", () => {
+    const { slot, bookings } = simulateSlotDetail("EMPTY", PICKED, "s", bank);
+    expect(bookings).toEqual([]);
+    expect(slot.booked).toBe(0);
   });
 });

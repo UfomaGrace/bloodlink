@@ -19,6 +19,8 @@
 //
 // Bookings: Prism sends one canned booking in that started slot, so nothing can be cancelled.
 // simulateBookings gives upcoming ones (cancellable), one in a started slot, and past ones.
+// simulateSlotDetail gives one slot (the id in the URL, run by the viewer's bank) started with
+// bookings to record, not started yet, or with nobody booked.
 
 import type {
   BloodRequest,
@@ -283,4 +285,48 @@ export function simulateBookings(state: BookingListSimulation, at: number, donor
     sampleBooking(5, sampleSlot(15, bankA, lagosAt(at, -7, "09:00"), lagosAt(at, -7, "11:00"), 10, 9), "ATTENDED", donorName, at),
     sampleBooking(6, sampleSlot(16, bankB, lagosAt(at, -14, "14:00"), lagosAt(at, -14, "16:00"), 6, 6), "NO_SHOW", donorName, at),
   ];
+}
+
+export type SlotDetailSimulation = "STARTED_WITH_BOOKINGS" | "NOT_STARTED" | "EMPTY";
+
+export const SLOT_DETAIL_SIMULATION_LABELS: Record<SlotDetailSimulation, string> = {
+  STARTED_WITH_BOOKINGS: "A started slot with bookings",
+  NOT_STARTED: "A slot not started yet, with bookings",
+  EMPTY: "No bookings yet (first use)",
+};
+
+const SAMPLE_DONORS = ["Ngozi Adeyemi", "Emeka Obi", "Funmi Lawal", "Ibrahim Musa", "Chiamaka Nwosu"];
+
+/**
+ * The slot at `slotId` (the one in the URL) run by `bank`, and its bookings, for `state`, with dates
+ * from `at` (ms). Started: began 30 minutes before `at`, three still BOOKED (to record), one
+ * attended, one cancelled. Not started: tomorrow, two BOOKED. Empty: the slot, nobody booked.
+ */
+export function simulateSlotDetail(
+  state: SlotDetailSimulation,
+  at: number,
+  slotId: string,
+  bank: Organisation,
+): { slot: DonationSlot; bookings: Booking[] } {
+  const started = state === "STARTED_WITH_BOOKINGS";
+  const statuses: Booking["status"][] =
+    state === "STARTED_WITH_BOOKINGS" ? ["BOOKED", "BOOKED", "BOOKED", "ATTENDED", "CANCELLED"] : state === "NOT_STARTED" ? ["BOOKED", "BOOKED"] : [];
+  const active = statuses.filter((s) => s !== "CANCELLED").length;
+  const slot: DonationSlot = {
+    id: slotId,
+    bank,
+    startsAt: started ? new Date(at - 30 * MINUTE_MS).toISOString() : lagosAt(at, 1, "09:00"),
+    endsAt: started ? new Date(at + 90 * MINUTE_MS).toISOString() : lagosAt(at, 1, "11:00"),
+    capacity: 8,
+    booked: active,
+    placesLeft: 8 - active,
+  };
+  const bookings = statuses.map((status, i): Booking => ({
+    id: `c3d4e5f6-a7b8-4c9d-8e0f-1a2b3c4d5e${String(i + 1).padStart(2, "0")}`,
+    slot,
+    donor: { id: `d4e5f6a7-b8c9-4d0e-9f1a-2b3c4d5e6f${String(i + 1).padStart(2, "0")}`, displayName: SAMPLE_DONORS[i] },
+    status,
+    createdAt: new Date(at - (i + 2) * DAY_MS).toISOString(),
+  }));
+  return { slot, bookings };
 }

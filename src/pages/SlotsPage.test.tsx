@@ -199,6 +199,27 @@ describe("SlotsPage: what each role is offered", () => {
     expect((await screen.findByRole("link", { name: "New slot" })).getAttribute("href")).toBe("/slots/new");
   });
 
+  it("View bookings: on the staff's own bank's slots only; on every slot for the administrator; never for donors", async () => {
+    renderPage();
+    await screen.findByText("3 of 10 places left");
+    expect(screen.queryByRole("link", { name: /^View bookings/ })).toBeNull();
+    cleanup();
+
+    auth.role = "BANK_STAFF";
+    auth.organisation = BANK;
+    renderPage();
+    const links = await screen.findAllByRole("link", { name: /^View bookings/ });
+    expect(links).toHaveLength(1);
+    expect(links[0].getAttribute("aria-label")).toMatch(/^View bookings: Lagos Central Blood Bank/);
+    expect(links[0].getAttribute("href")).toBe("/slots/slot-open");
+    cleanup();
+
+    auth.role = "ADMIN";
+    auth.organisation = null;
+    renderPage();
+    expect(await screen.findAllByRole("link", { name: /^View bookings/ })).toHaveLength(2);
+  });
+
   it.each([["BANK_STAFF"], ["ADMIN"]] as const)("%s sees the slots but no Book button", async (role) => {
     auth.role = role;
     auth.organisation = role === "BANK_STAFF" ? BANK : null;

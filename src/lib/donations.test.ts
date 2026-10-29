@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 import type { Booking, DonationSlot } from "../api/types";
 import {
   addDays,
+  attendanceRefusal,
   bookingClosedReason,
   bookingRefusal,
   canBook,
   cancelBookingRefusal,
   canCancelBooking,
   canCreateSlot,
+  canManageSlot,
+  canRecordAttendance,
   checkSlotRange,
   findSlotWithTimes,
   formatLagosDay,
@@ -16,9 +19,11 @@ import {
   hasSlotStarted,
   lagosDateTimeToIso,
   placesLeftLabel,
+  placesUsedLabel,
   slotTimeRangeLabel,
   slotWhenLabel,
   splitBookings,
+  unconfirmedAttendanceMessage,
   unconfirmedCancelMessage,
 } from "./donations";
 import type { Viewer } from "./requestActions";
@@ -257,5 +262,60 @@ describe("lagosDateTimeToIso and findSlotWithTimes", () => {
     ];
     expect(findSlotWithTimes(slots, "2026-10-30T08:00:00.000Z", "2026-10-30T09:00:00.000Z")?.id).toBe("same");
     expect(findSlotWithTimes(slots, "2026-10-30T08:00:00.000Z", "2026-10-30T09:30:00.000Z")).toBeUndefined();
+  });
+});
+
+describe("which actions a role can take on a slot's bookings", () => {
+  const otherBankStaff: Viewer = { role: "BANK_STAFF", organisationId: "bank-2" };
+  // The slot (bank-1) started at 09:30 UTC; NOW is 10:00 UTC.
+  const startedBooked = booking("b", "BOOKED", "2026-10-29T09:30:00Z", "2026-10-29T11:30:00Z");
+  const notStartedBooked = booking("b", "BOOKED", "2026-10-30T08:00:00Z", "2026-10-30T09:00:00Z");
+
+  it("staff of the slot's bank and the administrator manage it; nobody else", () => {
+    expect(canManageSlot(startedBooked.slot, bankStaff)).toBe(true);
+    expect(canManageSlot(startedBooked.slot, admin)).toBe(true);
+    for (const viewer of [otherBankStaff, donor, hospital]) expect(canManageSlot(startedBooked.slot, viewer)).toBe(false);
+    expect(canManageSlot(startedBooked.slot, { role: "BANK_STAFF", organisationId: null })).toBe(false);
+  });
+
+  it("the slot's bank and the administrator record attendance on a BOOKED booking once the slot has started", () => {
+    expect(canRecordAttendance(startedBooked, bankStaff, NOW)).toBe(true);
+    expect(canRecordAttendance(startedBooked, admin, NOW)).toBe(true);
+  });
+
+  it("a donor can't record attendance", () => {
+    expect(canRecordAttendance(startedBooked, donor, NOW)).toBe(false);
+  });
+
+  it("bank staff of another bank, and hospital staff, can't either", () => {
+    expect(canRecordAttendance(startedBooked, otherBankStaff, NOW)).toBe(false);
+    expect(canRecordAttendance(startedBooked, hospital, NOW)).toBe(false);
+  });
+
+  it("not before the slot starts, and not once recorded or cancelled", () => {
+    expect(canRecordAttendance(notStartedBooked, bankStaff, NOW)).toBe(false);
+    for (const status of ["ATTENDED", "NO_SHOW", "CANCELLED"] as const) {
+      expect(canRecordAttendance({ ...startedBooked, status }, bankStaff, NOW)).toBe(false);
+    }
+  });
+
+  it("says how many places are used", () => {
+    expect(placesUsedLabel({ booked: 7, capacity: 10 })).toBe("7 of 10 places used");
+    expect(placesUsedLabel({ booked: 0, capacity: 1 })).toBe("0 of 1 place used");
+  });
+});
+
+describe("attendanceRefusal and unconfirmedAttendanceMessage", () => {
+  it("gives each 409 its own message, and leaves others to the service", () => {
+    expect(attendanceRefusal("BOOKING_NOT_ACTIVE")).toMatch(/already recorded or cancelled/);
+    expect(attendanceRefusal("SLOT_NOT_STARTED")).toMatch(/hasn't started yet/);
+    expect(attendanceRefusal("VALIDATION_FAILED")).toBeNull();
+  });
+
+  it("says what the booking now shows after a lost connection", () => {
+    expect(unconfirmedAttendanceMessage("ATTENDED", "Ngozi")).toBe("We couldn't confirm. Ngozi's booking now shows as Attended.");
+    expect(unconfirmedAttendanceMessage("BOOKED", "Ngozi")).toMatch(/now shows as Booked\.$/);
+    expect(unconfirmedAttendanceMessage(undefined, "Ngozi")).toMatch(/no longer in this slot's list/);
+    expect(unconfirmedAttendanceMessage(null, "Ngozi")).toMatch(/or check the bookings/);
   });
 });

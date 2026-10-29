@@ -4,11 +4,12 @@
 // change is one line in this file and no screen changes. Asked of the service team:
 //   - `area` on GET /donation-slots          → listSlotsInArea
 //   - `slotId` on GET /bookings              → listSlotBookings
+//   - GET /donation-slots/{slotId}           → getSlotWithBookings
 //
 // Every call still goes through api/endpoints.
 
 import { api } from "../api/endpoints";
-import type { Booking, DonationSlotList, DonationSlotQuery } from "../api/types";
+import type { Booking, DonationSlot, DonationSlotList, DonationSlotQuery } from "../api/types";
 
 /** The contract's largest page for GET /bookings. */
 const BOOKINGS_PAGE_SIZE = 100;
@@ -60,4 +61,21 @@ export async function listSlotBookings(slotId: string, signal?: AbortSignal): Pr
 
 function normaliseArea(area: string): string {
   return area.trim().toLowerCase();
+}
+
+/**
+ * One slot and the bookings the caller can see for it.
+ * WORKAROUND: there is no GET /donation-slots/{slotId} yet. The slot's details come from its
+ * bookings (each Booking carries its slot, read just now), else from `known`, the copy the slot
+ * list passed along. With neither (a direct link to a slot nobody has booked) `slot` is null.
+ * When the service adds the endpoint, fetch the slot here alongside the bookings.
+ */
+export async function getSlotWithBookings(
+  slotId: string,
+  known: DonationSlot | null,
+  signal?: AbortSignal,
+): Promise<{ slot: DonationSlot | null; bookings: Booking[] }> {
+  const bookings = await listSlotBookings(slotId, signal);
+  const slot = bookings[0]?.slot ?? (known?.id === slotId ? known : null);
+  return { slot, bookings };
 }
