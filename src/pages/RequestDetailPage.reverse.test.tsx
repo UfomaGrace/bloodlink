@@ -93,7 +93,9 @@ afterEach(() => cleanup());
 describe("RequestDetailPage reverse issue", () => {
   it("says per unit where it goes, then shows the service's copy with both history entries", async () => {
     const reason = "Issued to the wrong request; the units never left the bank.";
-    mocks.reverseIssue.mockResolvedValueOnce(
+    let answer!: (value: ApiResponse<BloodRequest>) => void;
+    mocks.reverseIssue.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    const reversed = (): ApiResponse<BloodRequest> =>
       ok({
         ...fulfilledRequest(),
         state: "PENDING",
@@ -102,8 +104,7 @@ describe("RequestDetailPage reverse issue", () => {
           ISSUED_ENTRY,
           { at: "2026-10-28T11:00:00Z", event: "ISSUE_REVERSED", actor: ISSUED_ENTRY.actor, note: reason },
         ],
-      }),
-    );
+      });
     const user = userEvent.setup();
     renderPage();
 
@@ -120,6 +121,10 @@ describe("RequestDetailPage reverse issue", () => {
     await user.click(within(dialog).getByRole("button", { name: "Reverse issue" }));
 
     expect(mocks.reverseIssue).toHaveBeenCalledWith("req-1", { reason });
+    // In flight: the dialog hides the page, so it announces the progress itself.
+    expect(within(dialog).getByRole("status").textContent).toBe("Reversing issue…");
+    answer(reversed());
+
     const status = await screen.findByText(/^Issue reversed\. The request is pending again\./);
     expect(status.closest("[role=status]")).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();

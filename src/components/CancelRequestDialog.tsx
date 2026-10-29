@@ -10,6 +10,8 @@
 // - If the service then refuses the reason (422), the caller rolls back and reopens the dialog
 //   with `reopened` (from cancelReopened): the reason as typed, its errors under the field and
 //   anything else in the alert at the top.
+// - A role="status" line inside the dialog says "Cancelling request…" while the form submits, since
+//   the open dialog hides the page's status line. Cancel closes the dialog at once, so it is brief.
 
 import { Form, Formik } from "formik";
 import * as Yup from "yup";
@@ -78,6 +80,10 @@ export function CancelRequestDialog({ open, onOpenChange, request, reopened, onC
               hint="For example: patient transferred to another hospital. Never a patient's name."
               required
             />
+            {/* The dialog hides the page's status line from screen readers, so say it here too. */}
+            <p role="status" className="min-h-5 text-sm text-muted-foreground">
+              {isSubmitting ? "Cancelling request…" : ""}
+            </p>
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button variant="secondary" className="min-h-11" onClick={() => onOpenChange(false)}>
                 Keep request

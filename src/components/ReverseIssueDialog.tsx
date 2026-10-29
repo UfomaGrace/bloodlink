@@ -12,7 +12,8 @@
 //   gets the trimmed reason and resolves with the error when the service refused the reason (422);
 //   the dialog then stays open with the reason as typed, its errors under the field and anything
 //   else in the alert at the top. For any other outcome the caller closes the dialog and resolves null.
-// - It can't be closed while the reversal is in flight.
+// - It can't be closed while the reversal is in flight. A role="status" line inside the dialog says
+//   "Reversing issue…" then, because the open dialog hides the page's own status line.
 
 import { Form, Formik, type FormikHelpers } from "formik";
 import { useState } from "react";
@@ -117,6 +118,11 @@ function ReverseIssueForm({
           hint="For example: issued to the wrong request; the units never left the bank."
           required
         />
+        {/* The dialog hides the page's status line from screen readers, so say it here too. Always
+            rendered, so the change of text is announced. */}
+        <p role="status" className="min-h-5 text-sm text-muted-foreground">
+          {reversing ? "Reversing issue…" : ""}
+        </p>
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button variant="secondary" className="min-h-11" disabled={reversing} onClick={onKeep}>
             Keep issue

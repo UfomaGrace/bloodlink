@@ -35,7 +35,8 @@
 //     422 → put back, and the dialog reopens with the reason as typed and the field errors.
 //     Lost connection → CANCELLED stays until the reload answers, then we say what it shows.
 // - While an action is in flight, the status line under the heading says so ("Recording issue…"),
-//   because the busy button only shows a spinner.
+//   because the busy button only shows a spinner. An open dialog hides that line from screen
+//   readers, so the Issue, Reverse and Cancel dialogs each have their own role="status" line too.
 // - Issue and reverse are not idempotent and take no Idempotency-Key yet. On TIMEOUT or NETWORK_ERROR we
 //   neither say "failed" nor retry: we reload, then say what the request shows now
 //   ("We couldn't confirm. The request now shows as Fulfilled.").
@@ -623,6 +624,10 @@ function RequestDetail({ requestId }: { requestId: string }) {
         confirmLabel="Record as issued"
         onConfirm={() => issue(unitReferences)}
       >
+        {/* The dialog hides the page's status line from screen readers, so say it here too. */}
+        <p role="status" className="mb-2 min-h-5 text-sm text-muted-foreground">
+          {inFlight}
+        </p>
         <p id="issue-units-heading" className="font-medium">
           {unitReferences.length === 1 ? "Unit being issued" : `${unitReferences.length} units being issued`}
         </p>
