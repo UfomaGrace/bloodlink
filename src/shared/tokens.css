@@ -42,9 +42,6 @@
   --color-on-secondary: #ffffff;
   --color-on-secondary-muted: color-mix(in srgb, var(--color-on-secondary) 75%, var(--color-secondary)); /* 8.5:1 */
   --color-secondary-hover: color-mix(in srgb, var(--color-on-secondary) 10%, var(--color-secondary));
-  /* Service status dot on the dark top bar. Decorative only: the pill's text carries the meaning. */
-  --color-status-dot-on-dark: color-mix(in srgb, var(--color-primary) 45%, var(--color-on-secondary));
-
   /* Brand accent: crimson, used sparingly (logo, emergency urgency) */
   --color-accent: #b9384d;
 
