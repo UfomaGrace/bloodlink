@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiError as ApiErrorType, ApiResponse } from "../api/client";
 import type { Booking, BookingQuery, DonationSlot, DonationSlotList, Organisation, Role, Session } from "../api/types";
 import { addDays } from "../lib/donations";
-import { dayHeading, longDayLabel, shortDayLabel } from "../lib/donorWeek";
+import { dayHeading, longDayLabel, shortDayLabel, slotClockRange } from "../lib/donorWeek";
 import { lagosToday } from "../lib/expiry";
 
 // IS_MOCK is read from VITE_MOCK when api/client loads. .env.local may say VITE_MOCK=true, which
@@ -111,6 +111,9 @@ function renderPage(path = "/slots") {
     </MemoryRouter>,
   );
 }
+
+/** The heading of the dialog shown once a booking is made. */
+const BOOKED_TITLE = "You're booked. Thank you.";
 
 /** The hero's line under the h1 when there's no donations line to show. */
 const BOOK_A_TIME = "Book a time at a blood bank near you. It takes about an hour.";
@@ -415,12 +418,14 @@ describe("SlotsPage (donor): booked marker and the hero", () => {
 });
 
 describe("SlotsPage (donor): booking", () => {
-  it("books after confirming, says so, and reloads the places and the donor's bookings", async () => {
-    mocks.bookDonationSlot.mockResolvedValue({ ...ok({}), status: 201 });
+  it("books after confirming, shows 'You're booked', and reloads the places and the donor's bookings", async () => {
+    mocks.bookDonationSlot.mockResolvedValue({ ...ok(booking("b-new", OPEN, "BOOKED")), status: 201 });
     renderPage();
     await bookOpenSlot();
 
-    expect(await screen.findByText(/^Booked: Lagos Central Blood Bank/)).toBeTruthy();
+    const dialog = await screen.findByRole("dialog", { name: BOOKED_TITLE });
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(within(dialog).getByText("One donation can help more than one patient.")).toBeTruthy();
     expect(mocks.bookDonationSlot).toHaveBeenCalledTimes(1);
     expect(mocks.bookDonationSlot).toHaveBeenCalledWith("slot-open");
     await waitFor(() => expect(mocks.listDonationSlots).toHaveBeenCalledTimes(2));
@@ -428,25 +433,75 @@ describe("SlotsPage (donor): booking", () => {
     expect(bookedReads).toHaveLength(2);
   });
 
-  it("the result message takes focus once the dialog closes", async () => {
-    mocks.bookDonationSlot.mockResolvedValue({ ...ok({}), status: 201 });
+  it("'You're booked' says when (Lagos day and time), where (bank · area), what to bring, and the cancel rule", async () => {
+    mocks.bookDonationSlot.mockResolvedValue({ ...ok(booking("b-new", OPEN, "BOOKED")), status: 201 });
     renderPage();
     await bookOpenSlot();
-    const message = await screen.findByText(/^Booked: Lagos Central Blood Bank/);
-    await waitFor(() => expect(message.closest("[tabindex='-1']")).toBe(document.activeElement));
+
+    const dialog = await screen.findByRole("dialog", { name: BOOKED_TITLE });
+    const text = dialog.textContent ?? "";
+    expect(text).toContain(`${longDayLabel(lagosDay(1))} · ${slotClockRange(OPEN).label}`);
+    expect(text).toContain("Lagos Central Blood Bank · Ikeja");
+    expect(text).toContain("A photo ID. Eat and drink water first.");
+    expect(text).toContain("You can cancel until the slot starts.");
+    expect(within(dialog).getByRole("link", { name: "See my bookings" }).getAttribute("href")).toBe("/bookings");
+    expect(within(dialog).getByRole("button", { name: "Done" })).toBeTruthy();
+  });
+
+  it("'You're booked': the heading takes focus; Escape closes it and focus goes to 'Choose a day'", async () => {
+    mocks.bookDonationSlot.mockResolvedValue({ ...ok(booking("b-new", OPEN, "BOOKED")), status: 201 });
+    renderPage();
+    await bookOpenSlot();
+
+    const dialog = await screen.findByRole("dialog", { name: BOOKED_TITLE });
+    await waitFor(() => expect(document.activeElement).toBe(within(dialog).getByRole("heading", { name: BOOKED_TITLE })));
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Choose a day" })));
+  });
+
+  it("'You're booked': the close button closes it too", async () => {
+    mocks.bookDonationSlot.mockResolvedValue({ ...ok(booking("b-new", OPEN, "BOOKED")), status: 201 });
+    renderPage();
+    await bookOpenSlot();
+
+    await userEvent.click(within(await screen.findByRole("dialog", { name: BOOKED_TITLE })).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Choose a day" }));
+  });
+
+  it("'You're booked': Add to calendar saves an .ics file of the new booking", async () => {
+    const createObjectURL = vi.fn((blob: Blob) => (void blob, "blob:ics"));
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL, revokeObjectURL }));
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    mocks.bookDonationSlot.mockResolvedValue({ ...ok(booking("b-new", OPEN, "BOOKED")), status: 201 });
+    renderPage();
+    await bookOpenSlot();
+
+    const dialog = await screen.findByRole("dialog", { name: BOOKED_TITLE });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Add to calendar" }));
+    expect(click).toHaveBeenCalledTimes(1);
+    const text = await createObjectURL.mock.calls[0][0].text();
+    expect(text).toContain("UID:b-new@bloodlink\r\n");
+    expect(text).toContain("LOCATION:Lagos Central Blood Bank\\, Ikeja\r\n");
+    // Saving doesn't close it.
+    expect(screen.getByRole("dialog", { name: BOOKED_TITLE })).toBeTruthy();
+    click.mockRestore();
+    vi.unstubAllGlobals();
   });
 
   it("is not optimistic: places stay as loaded until the service answers", async () => {
-    let answer: (value: ApiResponse<object>) => void = () => {};
+    let answer: (value: ApiResponse<Booking>) => void = () => {};
     mocks.bookDonationSlot.mockReturnValue(new Promise((resolve) => (answer = resolve)));
     renderPage();
     await bookOpenSlot();
 
     expect(screen.getByText("3 of 10 places left")).toBeTruthy();
-    expect(screen.queryByText(/^Booked:/)).toBeNull();
+    expect(screen.queryByRole("dialog", { name: BOOKED_TITLE })).toBeNull();
     expect(screen.getAllByText("Booking your place at Lagos Central Blood Bank…").length).toBeGreaterThan(0);
-    answer({ ...ok({}), status: 201 });
-    expect(await screen.findByText(/^Booked:/)).toBeTruthy();
+    answer({ ...ok(booking("b-new", OPEN, "BOOKED")), status: 201 });
+    expect(await screen.findByRole("dialog", { name: BOOKED_TITLE })).toBeTruthy();
   });
 
   it("409 SLOT_FULL: 'This slot just filled up', with the Reference, and a reload", async () => {
@@ -457,6 +512,7 @@ describe("SlotsPage (donor): booking", () => {
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toMatch(/This slot just filled up/);
     expect(alert.textContent).toMatch(/Reference: ref-SLOT_FULL/);
+    expect(screen.queryByRole("dialog", { name: BOOKED_TITLE })).toBeNull();
     await waitFor(() => expect(mocks.listDonationSlots).toHaveBeenCalledTimes(2));
   });
 
@@ -476,6 +532,7 @@ describe("SlotsPage (donor): booking", () => {
 
     expect(await screen.findByText(/You already have a place in this slot/)).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("dialog", { name: BOOKED_TITLE })).toBeNull();
     await waitFor(() => expect(mocks.listDonationSlots).toHaveBeenCalledTimes(2));
   });
 
@@ -485,12 +542,13 @@ describe("SlotsPage (donor): booking", () => {
     await bookOpenSlot();
 
     expect(await screen.findByText(/your bookings don't show .* so it wasn't booked/)).toBeTruthy();
+    expect(screen.queryByRole("dialog", { name: BOOKED_TITLE })).toBeNull();
     expect(mocks.bookDonationSlot).toHaveBeenCalledTimes(1);
     expect(mocks.listBookings).toHaveBeenCalledWith({ page: 0, size: 100 }, undefined);
     await waitFor(() => expect(mocks.listDonationSlots).toHaveBeenCalledTimes(2));
   });
 
-  it("lost connection: says the booking now shows when the service has it", async () => {
+  it("lost connection: shows 'You're booked' when the donor's bookings have it after all", async () => {
     mocks.bookDonationSlot.mockRejectedValue(refusal("NETWORK_ERROR", 0));
     renderPage();
     await screen.findByText("3 of 10 places left");
@@ -498,8 +556,10 @@ describe("SlotsPage (donor): booking", () => {
     bookingsByStatus({ booked: [booking("b-1", OPEN, "BOOKED")] });
     await bookOpenSlot();
 
-    expect(await screen.findByText(/your bookings now show a place for you/)).toBeTruthy();
+    const dialog = await screen.findByRole("dialog", { name: BOOKED_TITLE });
+    expect(dialog.textContent).toContain("Lagos Central Blood Bank · Ikeja");
     expect(mocks.bookDonationSlot).toHaveBeenCalledTimes(1);
+    await userEvent.keyboard("{Escape}");
     expect(await screen.findByText("You're booked")).toBeTruthy();
   });
 });

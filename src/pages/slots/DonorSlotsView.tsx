@@ -12,16 +12,17 @@
 //   the chosen day can no longer be picked (another area, a reload), the default takes over.
 //   A live status says the chosen day and its count ("Saturday 31 October · 3 slots · Lagos time").
 // - Booking: "Book this time" → ConfirmDialog → POST /donation-slots/{id}/bookings, as before.
-//   Not optimistic. Booked → success message, then the slots and the donor's bookings reload
-//   quietly (the card turns to "You're booked", the hero shows it). 409 SLOT_FULL, SLOT_CLOSED,
+//   Not optimistic. Booked → BookedDialog ("You're booked. Thank you."), while the slots and the
+//   donor's bookings reload quietly behind it (the card turns to "You're booked", the hero shows
+//   it). Closing it returns focus to the "Choose a day" heading. 409 SLOT_FULL, SLOT_CLOSED,
 //   ALREADY_BOOKED → their own messages (bookingRefusal) and the same reload. Lost connection or
-//   timeout → no retry; we read the donor's bookings for that slot and say what they show.
-//   Focus: the result message takes focus (ResultAlert), just above the cards.
+//   timeout → no retry; we read the donor's bookings for that slot: found → BookedDialog, else we
+//   say what they show. Focus: those messages take focus (ResultAlert), just above the cards.
 // - Mock only: "Mock server tools" in a closed <details>. Its simulation (lib/mockSimulation
 //   simulateDonorWeek) starts on "A week of slots, with your bookings", so the screen shows
 //   realistic data against Prism.
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { ApiError, IS_MOCK, toApiError } from "../../api/client";
 import { api } from "../../api/endpoints";
@@ -42,6 +43,7 @@ import { EmptyState } from "../../shared/ui/empty-state";
 import { ErrorState } from "../../shared/ui/error-state";
 import { Skeleton } from "../../shared/ui/skeleton";
 import { BeforeYouDonate } from "./BeforeYouDonate";
+import { BookedDialog } from "./BookedDialog";
 import { DayPicker } from "./DayPicker";
 import { DonorHero } from "./DonorHero";
 import { TimeCards } from "./TimeCards";
@@ -120,6 +122,8 @@ export function DonorSlotsView() {
   const [target, setTarget] = useState<DonationSlot | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [inFlight, setInFlight] = useState<string | null>(null);
+  const [confirmed, setConfirmed] = useState<Booking | null>(null);
+  const dayHeadingRef = useRef<HTMLHeadingElement>(null);
 
   function openBook(slot: DonationSlot) {
     setTarget(slot);
@@ -131,12 +135,10 @@ export function DonorSlotsView() {
     setNotice(null);
     setInFlight(`Booking your place at ${slot.bank.name}…`);
     try {
-      await api.bookDonationSlot(slot.id);
+      const res = await api.bookDonationSlot(slot.id);
       setConfirmOpen(false);
-      setNotice({
-        tone: "success",
-        message: `Booked: ${slot.bank.name}, ${slotWhenLabel(slot)}. Please arrive on time.`,
-      });
+      // The slot the donor chose: the same id, with its bank and times as they saw them.
+      setConfirmed({ ...res.data, slot });
       reloadQuietly();
     } catch (e) {
       setConfirmOpen(false);
@@ -164,13 +166,13 @@ export function DonorSlotsView() {
     const where = `${slot.bank.name}, ${slotWhenLabel(slot)}`;
     try {
       const bookings = await listSlotBookings(slot.id);
-      const found = bookings.some((b) => b.status === "BOOKED" || b.status === "ATTENDED");
-      setNotice({
-        tone: "info",
-        message: found
-          ? `We couldn't confirm at first, but your bookings now show a place for you: ${where}.`
-          : `We couldn't confirm, and your bookings don't show ${where}, so it wasn't booked. You can book it again.`,
-      });
+      const found = bookings.find((b) => b.status === "BOOKED" || b.status === "ATTENDED");
+      if (found) setConfirmed(found);
+      else
+        setNotice({
+          tone: "info",
+          message: `We couldn't confirm, and your bookings don't show ${where}, so it wasn't booked. You can book it again.`,
+        });
     } catch {
       setNotice({
         tone: "info",
@@ -206,7 +208,7 @@ export function DonorSlotsView() {
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
           <section aria-labelledby="choose-day-heading" aria-busy={slots.loading || undefined} className="min-w-0">
             <div className="flex flex-wrap items-end justify-between gap-4">
-              <h2 id="choose-day-heading" className="text-xl font-semibold tracking-tight">
+              <h2 id="choose-day-heading" ref={dayHeadingRef} tabIndex={-1} className="text-xl font-semibold tracking-tight outline-none">
                 Choose a day
               </h2>
               {!(banks.error && !banks.data) && (
@@ -303,6 +305,8 @@ export function DonorSlotsView() {
           {inFlight ?? ""}
         </p>
       </ConfirmDialog>
+
+      <BookedDialog booking={confirmed} onClose={() => setConfirmed(null)} returnFocusTo={dayHeadingRef} />
     </>
   );
 }
