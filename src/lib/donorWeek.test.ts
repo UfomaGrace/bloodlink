@@ -1,14 +1,17 @@
 // donorWeek: Lagos days, counts per day, disabled days, the default day, labels, next booking, donations,
-// the hero heading and the donations line.
+// the hero heading and the donations line; My bookings' groups, band figures and cancel-until line.
 import { describe, expect, it } from "vitest";
 import type { Booking, DonationSlot, Organisation } from "../api/types";
 import {
   buildWeek,
+  cancelUntilLabel,
   dayHeading,
   defaultDay,
   DEFAULT_HERO_HEADING,
+  donationsBand,
   donationsLine,
   donationsSummary,
+  donorBookingGroups,
   donorPlacesLabel,
   heroHeading,
   longDayLabel,
@@ -155,5 +158,44 @@ describe("hero words", () => {
   it("day heading", () => {
     expect(dayHeading("2026-10-31", 3)).toBe("Saturday 31 October · 3 slots · Lagos time");
     expect(dayHeading("2026-10-31", 1)).toBe("Saturday 31 October · 1 slot · Lagos time");
+  });
+});
+
+describe("My bookings", () => {
+  const running = slot("running", "2026-10-31T10:00:00Z", "2026-10-31T12:00:00Z", 8, 2); // 11:00–13:00 today
+  const tomorrow = slot("tomorrow", "2026-11-01T08:00:00Z", "2026-11-01T10:00:00Z", 8, 2); // 09:00 Sun
+  const tuesday = slot("tuesday", "2026-11-03T08:00:00Z", "2026-11-03T10:00:00Z", 8, 2);
+  const ended = slot("ended", "2026-10-31T07:00:00Z", "2026-10-31T09:00:00Z", 8, 2);
+  const lastYear = slot("last-year", "2025-12-20T08:00:00Z", "2025-12-20T10:00:00Z", 8, 2);
+  const lastWeek = slot("last-week", "2026-10-24T08:00:00Z", "2026-10-24T10:00:00Z", 8, 2);
+
+  it("upcoming is BOOKED and not ended, soonest first; everything else is past, newest first", () => {
+    const groups = donorBookingGroups(
+      [
+        booking("tue", tuesday, "BOOKED"),
+        booking("old", lastWeek, "ATTENDED"),
+        booking("run", running, "BOOKED"),
+        booking("cancelled-future", tomorrow, "CANCELLED"),
+        booking("unrecorded", ended, "BOOKED"),
+      ],
+      NOW,
+    );
+    expect(groups.upcoming.map((b) => b.id)).toEqual(["run", "tue"]);
+    expect(groups.past.map((b) => b.id)).toEqual(["cancelled-future", "unrecorded", "old"]);
+  });
+
+  it("band figures: ATTENDED only, the latest date, the year only when it isn't this one", () => {
+    expect(donationsBand([booking("a", lastWeek, "ATTENDED"), booking("n", running, "NO_SHOW")], NOW)).toEqual({
+      count: 1,
+      lastLabel: "24 October",
+    });
+    expect(donationsBand([booking("a", lastYear, "ATTENDED")], NOW)).toEqual({ count: 1, lastLabel: "20 December 2025" });
+    expect(donationsBand([booking("c", lastWeek, "CANCELLED")], NOW)).toEqual({ count: 0, lastLabel: null });
+  });
+
+  it("cancel until the slot start, Lagos time", () => {
+    expect(cancelUntilLabel(running, NOW)).toBe("You can cancel until 11:00 today.");
+    expect(cancelUntilLabel(tomorrow, NOW)).toBe("You can cancel until 09:00 tomorrow.");
+    expect(cancelUntilLabel(tuesday, NOW)).toBe("You can cancel until 09:00 on Tuesday 3 November.");
   });
 });

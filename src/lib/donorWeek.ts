@@ -1,5 +1,6 @@
 // Donor week: the donor's view of the next seven Lagos days, their next booking and their donations.
 // Also the screen's words for them: the hero heading, the donations line, the day heading.
+// And My bookings: the upcoming / past groups, the donations band, "You can cancel until …".
 //
 // - Days are Lagos dates ("YYYY-MM-DD"), today first. A slot belongs to the Lagos day it starts on.
 // - Bookable: places left and not started (the same rule as canBook, without the role).
@@ -148,4 +149,35 @@ export function heroHeading(next: Booking | null, now: number): string {
 /** "Saturday 31 October · 3 slots · Lagos time". */
 export function dayHeading(date: string, count: number): string {
   return `${longDayLabel(date)} · ${slotCountLabel(count)} · Lagos time`;
+}
+
+/**
+ * My bookings: upcoming is BOOKED with the slot not ended (soonest first, as nextBooking);
+ * past is everything else, most recent first. A cancelled booking in a future slot is past.
+ */
+export function donorBookingGroups(bookings: readonly Booking[], now: number): { upcoming: Booking[]; past: Booking[] } {
+  const byStart = (a: Booking, b: Booking) => Date.parse(a.slot.startsAt) - Date.parse(b.slot.startsAt);
+  const isUpcoming = (b: Booking) => b.status === "BOOKED" && !hasSlotEnded(b.slot, now);
+  return {
+    upcoming: bookings.filter(isUpcoming).sort(byStart),
+    past: bookings.filter((b) => !isUpcoming(b)).sort((a, b) => byStart(b, a)),
+  };
+}
+
+/** The band's figures: how many donations, and "31 October" (with the year when it isn't this Lagos year). */
+export function donationsBand(bookings: readonly Booking[], now: number): { count: number; lastLabel: string | null } {
+  const summary = donationsSummary(bookings);
+  if (!summary) return { count: 0, lastLabel: null };
+  const { day, month } = dayNames(summary.lastDate);
+  const sameYear = summary.lastDate.slice(0, 4) === lagosToday(now).slice(0, 4);
+  return { count: summary.count, lastLabel: sameYear ? `${day} ${month}` : `${day} ${month} ${summary.lastDate.slice(0, 4)}` };
+}
+
+/** "You can cancel until 09:00 today." / "… tomorrow." / "… on Tuesday 3 November." (slot start, Lagos). */
+export function cancelUntilLabel(slot: Pick<DonationSlot, "startsAt">, now: number): string {
+  const time = formatLagosTime(slot.startsAt);
+  const date = slotLagosDay(slot);
+  const relative = relativeDayLabel(date, now);
+  if (relative) return `You can cancel until ${time} ${relative.toLowerCase()}.`;
+  return `You can cancel until ${time} on ${longDayLabel(date)}.`;
 }

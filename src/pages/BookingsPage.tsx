@@ -1,9 +1,16 @@
 // BookingsPage (/bookings): the signed-in donor's own bookings, upcoming and past, with status.
 //
 // - GET /bookings holds only the donor's own. Every page is read (lib/donationQueries
-//   listAllBookings), so the upcoming / past split (lib/donations splitBookings) is never cut
-//   off by paging. Upcoming: the slot hasn't ended, soonest first. Past: most recent first.
-// - Times are Lagos time, labelled, like SlotsPage.
+//   listAllBookings), so the groups (lib/donorWeek donorBookingGroups) are never cut off by paging.
+//   Upcoming: BOOKED and the slot hasn't ended, soonest first. Past: everything else, most recent first.
+// - Layout drops its column for this page (FullBleed in App.tsx): the donations band (the h1) runs
+//   edge to edge, and the page sets its own max-w-4xl container below it. The band shows no count
+//   while loading or when the read failed; the error is shown below it, with Try again.
+// - Upcoming cards (UpcomingCard). Add to calendar is filled on the first card only, and on none
+//   while a Change time note is open, so only one filled action shows at a time. With nothing
+//   upcoming: "Nothing booked yet." and Book a donation (/slots), the page's one filled action.
+// - Past rows (PastList): "✓ Donated", "Cancelled", "Missed", "Not recorded yet".
+// - Times are Lagos time, labelled.
 // - "Cancel booking" (canCancelBooking: BOOKED and the slot hasn't started) → ConfirmDialog →
 //   POST /bookings/{id}/cancellation. Not optimistic: the dialog stays open, busy, until the
 //   service answers, and the list is then read again to show what the service holds.
@@ -12,7 +19,10 @@
 //     404 or any other 409 → the service's message, and a reload.
 //     Lost connection or timeout → no retry. We read the bookings again and say what this one
 //       now shows ("We couldn't confirm. Your booking for … now shows as Cancelled.").
-// - States: loading, error (+ Try again, Reference), first use (+ Find a slot), list, refreshing.
+// - "Change time" → a note under the card. "Cancel and choose" sends the same cancellation (the
+//   note is the confirmation); once cancelled we go to /slots to pick a new time. Any failure is
+//   handled as above, the note closes and the donor stays here.
+// - States: loading, error (+ Try again, Reference), list, refreshing.
 // - Mock only: "Simulate state" swaps in upcoming and past bookings, or none, with dates counted
 //   from the moment it is picked. Prism's own answer is one booking in a slot that has started.
 
@@ -27,35 +37,27 @@ import { ResultAlert, type Notice } from "../components/ResultAlert";
 import { useAsync } from "../hooks/useAsync";
 import { useNow } from "../hooks/useNow";
 import { listAllBookings } from "../lib/donationQueries";
-import {
-  cancelBookingRefusal,
-  canCancelBooking,
-  formatLagosDay,
-  hasSlotStarted,
-  slotTimeRangeLabel,
-  slotWhenLabel,
-  splitBookings,
-  unconfirmedCancelMessage,
-} from "../lib/donations";
-import { BOOKING_STATUS_LABELS, BOOKING_STATUS_TONES } from "../lib/labels";
+import { cancelBookingRefusal, canCancelBooking, slotWhenLabel, unconfirmedCancelMessage } from "../lib/donations";
+import { donorBookingGroups } from "../lib/donorWeek";
 import { BOOKING_LIST_SIMULATION_LABELS, simulateBookings, type BookingListSimulation } from "../lib/mockSimulation";
 import { viewerOf } from "../lib/requestActions";
 import { cn } from "../shared/cn";
-import { Button } from "../shared/ui/button";
 import { ConfirmDialog } from "../shared/ui/dialog";
-import { EmptyState } from "../shared/ui/empty-state";
 import { ErrorState } from "../shared/ui/error-state";
 import { Skeleton } from "../shared/ui/skeleton";
-import { StatusBadge } from "../shared/ui/status-badge";
+import { DonationsBand } from "./bookings/DonationsBand";
+import { PastList } from "./bookings/PastList";
+import { UpcomingCard } from "./bookings/UpcomingCard";
 
-// "Started: too late to cancel" must not wait long to become true while the page is open.
+// "Started · too late to cancel" must not wait long to become true while the page is open.
 const CLOCK_TICK_MS = 30_000;
 
 const focusRing =
   "focus-visible:[outline:var(--focus-ring-width)_solid_var(--color-focus)] focus-visible:outline-offset-(--focus-ring-offset)";
 
-const textLink = cn(
-  "inline-flex min-h-11 items-center rounded-sm font-medium text-(--color-primary) underline underline-offset-2",
+const filledLink = cn(
+  "inline-flex h-10 shrink-0 items-center rounded-md bg-primary px-4 text-sm font-medium text-(--color-on-primary)",
+  "hover:bg-(--color-primary-hover)",
   focusRing,
 );
 
@@ -98,19 +100,29 @@ export default function BookingsPage() {
   const [target, setTarget] = useState<Booking | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [inFlight, setInFlight] = useState<string | null>(null);
+  // The booking whose Change time note is open, if any.
+  const [changing, setChanging] = useState<string | null>(null);
 
   function openCancel(booking: Booking) {
+    setChanging(null);
     setTarget(booking);
     setConfirmOpen(true);
   }
 
-  // Resolves either way, so ConfirmDialog never stays open; we close it ourselves in the same update.
-  async function cancel(booking: Booking) {
+  /**
+   * Cancels `booking`. Resolves either way, so ConfirmDialog never stays open; we close it
+   * ourselves in the same update. `then`: what a cancellation leads to, a message here or /slots.
+   */
+  async function cancel(booking: Booking, then: "stay" | "choose") {
     setNotice(null);
     setInFlight("Cancelling your booking…");
     try {
       await api.cancelBooking(booking.id);
       setConfirmOpen(false);
+      if (then === "choose") {
+        navigate("/slots");
+        return;
+      }
       setNotice({
         tone: "success",
         message: `Booking cancelled: ${whereLabel(booking)}. The place is free for someone else.`,
@@ -118,6 +130,7 @@ export default function BookingsPage() {
       reloadQuietly();
     } catch (e) {
       setConfirmOpen(false);
+      setChanging(null);
       const error = toApiError(e);
       if (error.isConnectionProblem) {
         await checkAfterLostConnection(booking);
@@ -148,54 +161,92 @@ export default function BookingsPage() {
   }
 
   const statusLine = inFlight ?? (refreshing ? "Checking your bookings…" : "");
+  const groups = data && donorBookingGroups(data, now);
 
   return (
     <>
-      <h1 className="text-2xl font-semibold tracking-tight">My bookings</h1>
-      <p className="mt-2 text-muted-foreground">Your donation bookings. Times are Lagos time.</p>
-      {/* What is in flight, or that the list is being checked again. Always rendered, so it is announced. */}
-      <p role="status" className="mt-1 min-h-5 text-sm text-muted-foreground">
-        {statusLine}
-      </p>
+      <DonationsBand bookings={data} now={now} />
 
-      {notice && <ResultAlert notice={notice} className="mt-4" />}
+      <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-8">
+        {/* What is in flight, or that the list is being checked again. Always rendered, so it is announced. */}
+        <p role="status" className="min-h-5 text-sm text-muted-foreground">
+          {statusLine}
+        </p>
 
-      <MockControls
-        className="mt-4"
-        simulation={{ value: simulated?.state ?? null, onChange: pickSimulation, labels: BOOKING_LIST_SIMULATION_LABELS }}
-      />
+        {notice && <ResultAlert notice={notice} className="mt-2" />}
 
-      <div className="mt-6" aria-busy={bookings.loading || undefined}>
-        {bookings.loading && !refreshing ? (
-          <div className="flex flex-col gap-4">
-            <p role="status" className="text-sm font-medium">
-              Loading your bookings…
-            </p>
-            <Skeleton lines={6} />
-          </div>
-        ) : bookings.error ? (
-          <ErrorState
-            // ErrorState takes strings only; pre-line puts the Reference on its own line.
-            className="whitespace-pre-line"
-            title="We couldn't load your bookings"
-            description={`${bookings.error.message}\nReference: ${bookings.error.requestId}`}
-            onRetry={bookings.reload}
-          />
-        ) : data && data.length === 0 ? (
-          <EmptyState
-            title="No bookings yet"
-            description="Choose a donation slot at a bank near you and book a place."
-            action={{ label: "Find a donation slot", onClick: () => navigate("/slots") }}
-          />
-        ) : data ? (
-          <BookingSections
-            bookings={data}
-            now={now}
-            canCancel={(booking) => canCancelBooking(booking, viewer, now)}
-            cancelDisabled={inFlight !== null}
-            onCancel={openCancel}
-          />
-        ) : null}
+        <MockControls
+          className="mt-4"
+          simulation={{ value: simulated?.state ?? null, onChange: pickSimulation, labels: BOOKING_LIST_SIMULATION_LABELS }}
+        />
+
+        <div className="mt-4" aria-busy={bookings.loading || undefined}>
+          {bookings.loading && !refreshing ? (
+            <div className="flex flex-col gap-4">
+              <p role="status" className="text-sm font-medium">
+                Loading your bookings…
+              </p>
+              <Skeleton lines={6} />
+            </div>
+          ) : bookings.error ? (
+            <ErrorState
+              // ErrorState takes strings only; pre-line puts the Reference on its own line.
+              className="whitespace-pre-line"
+              title="We couldn't load your bookings"
+              description={`${bookings.error.message}\nReference: ${bookings.error.requestId}`}
+              onRetry={bookings.reload}
+            />
+          ) : groups ? (
+            <div className="flex flex-col gap-8">
+              <section aria-labelledby="upcoming-heading">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-4">
+                  <h2 id="upcoming-heading" className="text-lg font-semibold">
+                    Upcoming
+                  </h2>
+                  <p className="text-sm text-muted-foreground">Times are Lagos time.</p>
+                </div>
+                {groups.upcoming.length === 0 ? (
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-4 rounded-md border border-dashed border-border bg-surface p-5">
+                    <p className="font-medium">Nothing booked yet.</p>
+                    <Link to="/slots" className={filledLink}>
+                      Book a donation
+                    </Link>
+                  </div>
+                ) : (
+                  <ul className="mt-3 flex flex-col gap-4">
+                    {groups.upcoming.map((booking, i) => (
+                      <UpcomingCard
+                        key={booking.id}
+                        booking={booking}
+                        where={whereLabel(booking)}
+                        now={now}
+                        calendarFilled={i === 0 && changing === null}
+                        canCancel={canCancelBooking(booking, viewer, now)}
+                        disabled={inFlight !== null}
+                        noteOpen={changing === booking.id}
+                        choosing={changing === booking.id && inFlight !== null}
+                        onOpenNote={() => setChanging(booking.id)}
+                        onCloseNote={() => setChanging(null)}
+                        onCancel={() => openCancel(booking)}
+                        onCancelAndChoose={() => cancel(booking, "choose")}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </section>
+              <section aria-labelledby="past-heading">
+                <h2 id="past-heading" className="text-lg font-semibold">
+                  Past
+                </h2>
+                {groups.past.length === 0 ? (
+                  <p className="mt-2 text-sm text-muted-foreground">No past bookings yet.</p>
+                ) : (
+                  <PastList bookings={groups.past} />
+                )}
+              </section>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <ConfirmDialog
@@ -207,7 +258,7 @@ export default function BookingsPage() {
         confirmLabel="Cancel booking"
         cancelLabel="Keep booking"
         loading={inFlight !== null}
-        onConfirm={() => (target ? cancel(target) : undefined)}
+        onConfirm={() => (target ? cancel(target, "stay") : undefined)}
       >
         {/* The page's status line is hidden from screen readers while the dialog is open. */}
         <p role="status" className="min-h-5 text-muted-foreground">
@@ -215,109 +266,5 @@ export default function BookingsPage() {
         </p>
       </ConfirmDialog>
     </>
-  );
-}
-
-function BookingSections({
-  bookings,
-  now,
-  canCancel,
-  cancelDisabled,
-  onCancel,
-}: {
-  bookings: readonly Booking[];
-  now: number;
-  canCancel: (booking: Booking) => boolean;
-  cancelDisabled: boolean;
-  onCancel: (booking: Booking) => void;
-}) {
-  const { upcoming, past } = splitBookings(bookings, now);
-  return (
-    <div className="flex flex-col gap-8">
-      <section aria-labelledby="upcoming-heading">
-        <h2 id="upcoming-heading" className="text-lg font-semibold">
-          Upcoming ({upcoming.length})
-        </h2>
-        {upcoming.length === 0 ? (
-          <p className="mt-2 text-sm text-muted-foreground">
-            Nothing booked.{" "}
-            <Link to="/slots" className={textLink}>
-              Find a donation slot
-            </Link>
-          </p>
-        ) : (
-          <BookingList bookings={upcoming} now={now} canCancel={canCancel} cancelDisabled={cancelDisabled} onCancel={onCancel} />
-        )}
-      </section>
-      <section aria-labelledby="past-heading">
-        <h2 id="past-heading" className="text-lg font-semibold">
-          Past ({past.length})
-        </h2>
-        {past.length === 0 ? (
-          <p className="mt-2 text-sm text-muted-foreground">No past bookings yet.</p>
-        ) : (
-          <BookingList bookings={past} now={now} canCancel={canCancel} cancelDisabled={cancelDisabled} onCancel={onCancel} />
-        )}
-      </section>
-    </div>
-  );
-}
-
-function BookingList({
-  bookings,
-  now,
-  canCancel,
-  cancelDisabled,
-  onCancel,
-}: {
-  bookings: readonly Booking[];
-  now: number;
-  canCancel: (booking: Booking) => boolean;
-  cancelDisabled: boolean;
-  onCancel: (booking: Booking) => void;
-}) {
-  return (
-    <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {bookings.map((booking) => {
-        const { slot } = booking;
-        // BOOKED in a slot that has started: say why there is no Cancel.
-        const tooLate = booking.status === "BOOKED" && hasSlotStarted(slot, now);
-        return (
-          <li key={booking.id} className="flex min-w-0 flex-col rounded-md border border-border bg-surface p-4">
-            <div className="flex items-start justify-between gap-3">
-              <h3 className="min-w-0 font-semibold wrap-break-word">{slot.bank.name}</h3>
-              <StatusBadge tone={BOOKING_STATUS_TONES[booking.status]} className="text-sm">
-                {BOOKING_STATUS_LABELS[booking.status]}
-              </StatusBadge>
-            </div>
-            <p className="text-sm text-muted-foreground wrap-break-word">{slot.bank.area}</p>
-            <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
-              <dt className="text-muted-foreground">Day</dt>
-              <dd className="min-w-0">
-                <time dateTime={slot.startsAt}>{formatLagosDay(slot.startsAt)}</time>
-              </dd>
-              <dt className="text-muted-foreground">Time</dt>
-              <dd className="min-w-0 tabular-nums">{slotTimeRangeLabel(slot)}</dd>
-            </dl>
-            {canCancel(booking) ? (
-              <div className="mt-auto pt-4">
-                <Button
-                  variant="secondary"
-                  className="min-h-11 w-full sm:w-auto"
-                  disabled={cancelDisabled}
-                  onClick={() => onCancel(booking)}
-                  // Starts with the visible words, so voice control users can say "Cancel booking".
-                  aria-label={`Cancel booking ${whereLabel(booking)}`}
-                >
-                  Cancel booking
-                </Button>
-              </div>
-            ) : (
-              tooLate && <p className="mt-auto pt-4 text-sm font-medium text-muted-foreground">Started: too late to cancel.</p>
-            )}
-          </li>
-        );
-      })}
-    </ul>
   );
 }

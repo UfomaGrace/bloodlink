@@ -174,9 +174,12 @@ export default function App() {
               <Route
                 path="bookings"
                 element={
-                  <RequireRole roles={DONOR_ONLY}>
-                    <BookingsPage />
-                  </RequireRole>
+                  // The donations band runs edge to edge.
+                  <FullBleed roles={DONOR_ONLY}>
+                    <RequireRole roles={DONOR_ONLY}>
+                      <BookingsPage />
+                    </RequireRole>
+                  </FullBleed>
                 }
               />
               {/* Every signed-in role has an account page. */}
