@@ -15,6 +15,7 @@
 // Dashboard: the contract has no Dashboard example, so Prism makes one up from the schema
 // (counts of -2147483648, names "string", dates in 2019). simulateDashboard replaces it with
 // "Sample figures" (realistic, dates from `at`) or "Empty (first use)". Display only, like above.
+// simulatePendingRequests gives the pending requests that go with them (one an emergency).
 //
 // Donation slots: Prism's only DonationSlot example starts on 29 Oct 2026 at 09:00, so it soon
 // reads as started. simulateSlots replaces the list with slots counted from `at`: some with
@@ -421,4 +422,37 @@ export function simulateSlotDetail(
     createdAt: new Date(at - (i + 2) * DAY_MS).toISOString(),
   }));
   return { slot, bookings };
+}
+
+/**
+ * The pending requests that go with the dashboard's "Sample figures" (four, as its openRequests
+ * says): an O− emergency received 12 minutes before `at`, then urgent and routine ones. `bank`
+ * null spreads them over the sample banks, as "All banks" would. "Empty (first use)" has none.
+ */
+export function simulatePendingRequests(state: DashboardSimulation, at: number, bank: Organisation | null): BloodRequest[] {
+  if (state === "EMPTY") return [];
+  const ago = (minutes: number) => new Date(at - minutes * MINUTE_MS).toISOString();
+  const rows: [BloodRequest["urgency"], GroupCount["bloodGroup"], GroupCount["rhesus"], number, number, Organisation][] = [
+    ["EMERGENCY", "O", "NEGATIVE", 2, 12, SAMPLE_HOSPITALS[0]],
+    ["URGENT", "A", "POSITIVE", 4, 60, SAMPLE_HOSPITALS[1]],
+    ["ROUTINE", "B", "POSITIVE", 1, 180, SAMPLE_HOSPITALS[0]],
+    ["ROUTINE", "AB", "POSITIVE", 2, 300, SAMPLE_HOSPITALS[1]],
+  ];
+  return rows.map(([urgency, bloodGroup, rhesus, quantity, minutesAgo, hospital], i): BloodRequest => ({
+    id: `b8c9d0e1-f2a3-4b4c-8d5e-6f7a8b9c0d${String(i + 1).padStart(2, "0")}`,
+    reference: `REQ-2026-0004${String(i + 1).padStart(2, "0")}`,
+    hospital,
+    bank: bank ?? SAMPLE_BANKS[i % SAMPLE_BANKS.length],
+    bloodGroup,
+    rhesus,
+    component: "RED_CELLS",
+    quantity,
+    urgency,
+    neededBy: new Date(at + (i + 1) * HOUR_MS).toISOString(),
+    state: "PENDING",
+    declineReason: null,
+    createdAt: ago(minutesAgo),
+    reservations: [],
+    history: [{ at: ago(minutesAgo), event: "CREATED", actor: `Staff, ${hospital.name}`, note: null }],
+  }));
 }
