@@ -406,14 +406,14 @@ function SlotDateRange({
       validationSchema={RANGE_SCHEMA}
       onSubmit={(values) => onSubmit(values)}
     >
-      {({ dirty }) => (
+      {() => (
         <Form ref={formRef} noValidate aria-label="Dates" className="mt-4 grid gap-4 sm:grid-cols-2 sm:items-start">
           <FocusFirstError formRef={formRef} />
           <FormikField name="from" label="First day" type="date" hint="Lagos date. Empty means today." />
           <FormikField name="to" label="Last day" type="date" hint="Lagos date, up to 31 days after the first." />
           {/* Its own row, so hints and errors of any length never push it out of line. */}
           <div className="sm:col-span-2">
-            <Button type="submit" variant={dirty ? "primary" : "secondary"} className="min-h-11">
+            <Button type="submit" variant="secondary" className="min-h-11">
               Show slots
             </Button>
           </div>
@@ -598,6 +598,7 @@ function SlotCard({
         <div className="mt-auto pt-4">
           {bookable ? (
             <Button
+              variant="secondary"
               className="min-h-11 w-full sm:w-auto"
               disabled={bookDisabled}
               onClick={() => onBook(slot)}

@@ -47,7 +47,7 @@ const focusRing =
 
 const requestLink = cn(
   "inline-flex min-h-11 items-center justify-center rounded-md px-4 text-sm font-medium whitespace-nowrap",
-  "bg-(--color-primary) text-(--color-on-primary) hover:bg-(--color-primary-hover)",
+  "border border-(--color-border-input) bg-(--color-surface) text-(--color-text) hover:bg-(--color-surface-hover)",
   focusRing,
 );
 

@@ -75,15 +75,15 @@ export default function Layout() {
         onClick={skipToMain}
         className={cn(
           "sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50",
-          "focus:inline-flex focus:min-h-11 focus:items-center focus:rounded-md focus:bg-primary focus:px-4",
-          "focus:text-sm focus:font-medium focus:text-(--color-on-primary)",
+          "focus:inline-flex focus:min-h-11 focus:items-center focus:rounded-md focus:bg-surface focus:px-4",
+          "focus:text-sm focus:font-medium focus:text-foreground",
           focusRing,
         )}
       >
         Skip to main content
       </a>
 
-      {/* Dark header. Teal on slate is too faint for a focus ring, so it turns white in here. */}
+      {/* Dark header. Teal on the dark header is too faint for a focus ring, so it turns white in here. */}
       <header className="bg-secondary text-(--color-on-secondary) [--color-focus:var(--color-on-secondary)]">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2 sm:px-8">
           <Link
@@ -110,10 +110,10 @@ export default function Layout() {
                       end
                       className={({ isActive }) =>
                         cn(
-                          // Active: white text on a lifted background, with a crimson underline as the brand touch.
+                          // Active: white text on a lifted background, with a white underline.
                           "inline-flex min-h-11 items-center whitespace-nowrap rounded-t-md border-b-2 px-3 text-sm font-medium transition-colors",
                           isActive
-                            ? "border-brand-accent bg-(--color-secondary-hover) text-(--color-on-secondary)"
+                            ? "border-(--color-on-secondary) bg-(--color-secondary-hover) text-(--color-on-secondary)"
                             : "border-transparent text-(--color-on-secondary-muted) hover:bg-(--color-secondary-hover) hover:text-(--color-on-secondary)",
                           focusRing,
                         )
