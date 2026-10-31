@@ -51,7 +51,7 @@ vi.mock("../../auth/AuthContext", () => ({
   }),
 }));
 
-const { default: Layout, SIDEBAR_COLLAPSED_KEY } = await import("./Layout");
+const { default: Layout, FullBleed, SIDEBAR_COLLAPSED_KEY } = await import("./Layout");
 const { headerHeight } = await import("./layoutStyles");
 
 function tree(path: string) {
@@ -403,5 +403,43 @@ describe("Layout: brand stripe", () => {
     // 60px bar + 3px stripe, set once on the layout root.
     expect(headerHeight).toBe("[--header-h:63px]");
     expect(sidebar().closest(`[class~="${headerHeight}"]`)).toBeTruthy();
+  });
+});
+
+describe("Layout: FullBleed", () => {
+  function renderFullBleed(path: string, role: Role) {
+    mocks.role.current = role;
+    return render(
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route
+              path="slots"
+              element={
+                <FullBleed roles={["DONOR"]}>
+                  <h1>Slots</h1>
+                </FullBleed>
+              }
+            />
+            <Route path="*" element={<h1>Page</h1>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  it("drops the centred column for the roles it names", () => {
+    renderFullBleed("/slots", "DONOR");
+    const main = screen.getByRole("main");
+    expect(main.className).not.toContain("max-w-6xl");
+    expect(main.className).not.toContain("px-4");
+  });
+
+  it("keeps the column for other roles, and on other pages", () => {
+    renderFullBleed("/slots", "BANK_STAFF");
+    expect(screen.getByRole("main").className).toContain("max-w-6xl");
+    cleanup();
+    renderFullBleed("/bookings", "DONOR");
+    expect(screen.getByRole("main").className).toContain("max-w-6xl");
   });
 });

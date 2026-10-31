@@ -22,11 +22,24 @@
 //   (no drawer), so the page never scrolls horizontally. Long names truncate. Below sm the
 //   header scrolls away with the page; from sm it is sticky.
 // - Both roots set --header-h (layoutStyles) so the staff sidebar sticks just below the header.
+// - <main> centres the page in a max-w-6xl column with padding. A route wrapped in <FullBleed>
+//   (App.tsx) skips that column for the roles it names, so the page can run a band edge to edge
+//   and set its own container below it. Every other page is unchanged.
 //
+// FullBleed: the route flag above. Set before paint (useLayoutEffect), cleared when the page goes.
 // RequireRole: wrap a route's page so other roles get a friendly message instead.
 // HomeRedirect: "/" sends each role to its starting page.
 
-import { useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react";
+import {
+  createContext,
+  useContext,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { Link, Navigate, NavLink, Outlet } from "react-router";
 import { IS_MOCK } from "../../api/client";
 import type { Role, User } from "../../api/types";
@@ -62,9 +75,25 @@ function writeSidebarCollapsed(collapsed: boolean) {
 
 type SkipHandler = (event: MouseEvent<HTMLAnchorElement>) => void;
 
+/** Outside Layout (a page rendered on its own, as in tests) there is no column to skip. */
+const FullBleedContext = createContext<(fullBleed: boolean) => void>(() => {});
+
+/** Route flag: the page fills <main> edge to edge, without Layout's column, for `roles`. */
+export function FullBleed({ roles, children }: { roles: readonly Role[]; children: ReactNode }) {
+  const setFullBleed = useContext(FullBleedContext);
+  const { role } = useAuth();
+  const on = role !== null && roles.includes(role);
+  useLayoutEffect(() => {
+    setFullBleed(on);
+    return () => setFullBleed(false);
+  }, [on, setFullBleed]);
+  return <>{children}</>;
+}
+
 export default function Layout() {
   const { session, role, signOut } = useAuth();
   const mainRef = useRef<HTMLElement>(null);
+  const [fullBleed, setFullBleed] = useState(false);
 
   // RequireAuth normally catches this first; kept so `session` is non-null below.
   if (!session || !role) return <Navigate to="/login" replace />;
@@ -78,16 +107,29 @@ export default function Layout() {
   }
 
   if (STAFF_SHELL_ROLES.includes(role)) {
-    return <StaffShell role={role} user={user} mainRef={mainRef} onSkip={skipToMain} onSignOut={() => signOut()} />;
+    return (
+      <FullBleedContext.Provider value={setFullBleed}>
+        <StaffShell
+          role={role}
+          user={user}
+          mainRef={mainRef}
+          fullBleed={fullBleed}
+          onSkip={skipToMain}
+          onSignOut={() => signOut()}
+        />
+      </FullBleedContext.Provider>
+    );
   }
 
   return (
-    <div className={cn("flex min-h-dvh flex-col bg-background font-sans text-foreground", headerHeight)}>
-      <SkipLink onClick={skipToMain} />
-      <TopNavHeader role={role} user={user} onSignOut={() => signOut()} />
-      <PageMain mainRef={mainRef} />
-      <Footer />
-    </div>
+    <FullBleedContext.Provider value={setFullBleed}>
+      <div className={cn("flex min-h-dvh flex-col bg-background font-sans text-foreground", headerHeight)}>
+        <SkipLink onClick={skipToMain} />
+        <TopNavHeader role={role} user={user} onSignOut={() => signOut()} />
+        <PageMain mainRef={mainRef} fullBleed={fullBleed} />
+        <Footer />
+      </div>
+    </FullBleedContext.Provider>
   );
 }
 
@@ -95,12 +137,14 @@ function StaffShell({
   role,
   user,
   mainRef,
+  fullBleed,
   onSkip,
   onSignOut,
 }: {
   role: Role;
   user: User;
   mainRef: RefObject<HTMLElement | null>;
+  fullBleed: boolean;
   onSkip: SkipHandler;
   onSignOut: () => void;
 }) {
@@ -135,7 +179,7 @@ function StaffShell({
       <div className="flex min-w-0 flex-1">
         <StaffSidebar id={SIDEBAR_ID} role={role} collapsed={collapsed} className="hidden lg:flex" />
         <div className="flex min-w-0 flex-1 flex-col">
-          <PageMain mainRef={mainRef} />
+          <PageMain mainRef={mainRef} fullBleed={fullBleed} />
           <Footer />
         </div>
       </div>
@@ -220,13 +264,16 @@ function TopNavHeader({
   );
 }
 
-function PageMain({ mainRef }: { mainRef: RefObject<HTMLElement | null> }) {
+function PageMain({ mainRef, fullBleed }: { mainRef: RefObject<HTMLElement | null>; fullBleed: boolean }) {
   return (
     <main
       ref={mainRef}
       id="main"
       tabIndex={-1}
-      className="mx-auto w-full min-w-0 max-w-6xl flex-1 px-4 py-6 focus:outline-none sm:px-8 sm:py-8"
+      className={cn(
+        "w-full min-w-0 flex-1 focus:outline-none",
+        !fullBleed && "mx-auto max-w-6xl px-4 py-6 sm:px-8 sm:py-8",
+      )}
     >
       <Outlet />
     </main>

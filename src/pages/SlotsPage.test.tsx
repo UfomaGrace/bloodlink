@@ -1,11 +1,20 @@
 // @vitest-environment jsdom
-// SlotsPage: the donor's slot list and booking, its 409s, a lost connection, the 31-day rule and roles.
+// SlotsPage. Donors: the week of days, time cards, booking and its 409s, a lost connection, the
+// booked marker, the hero (next donation, donations pill) and Add to calendar. Staff: the list,
+// the 31-day rule, filters and what each role is offered.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, type ApiResponse } from "../api/client";
-import type { DonationSlot, DonationSlotList, Organisation, Role, Session } from "../api/types";
+import type { ApiError as ApiErrorType, ApiResponse } from "../api/client";
+import type { Booking, BookingQuery, DonationSlot, DonationSlotList, Organisation, Role, Session } from "../api/types";
+import { addDays } from "../lib/donations";
+import { longDayLabel, shortDayLabel } from "../lib/donorWeek";
+import { lagosToday } from "../lib/expiry";
+
+// IS_MOCK is read from VITE_MOCK when api/client loads. .env.local may say VITE_MOCK=true, which
+// would swap in the donor screen's simulated week, so these tests pin it off before importing.
+vi.stubEnv("VITE_MOCK", "false");
 
 const BANK: Organisation = { id: "0d1f6a3e-2b4c-4e5f-8a9b-1c2d3e4f5a6b", name: "Lagos Central Blood Bank", type: "BLOOD_BANK", area: "Ikeja" };
 const OTHER_BANK: Organisation = { id: "1e2f3a4b-5c6d-4e7f-8a9b-0c1d2e3f4a5b", name: "Surulere Blood Centre", type: "BLOOD_BANK", area: "Surulere" };
@@ -20,14 +29,16 @@ const auth = vi.hoisted(() => ({ role: "DONOR" as Role, organisation: null as Or
 vi.mock("../api/endpoints", () => ({ api: mocks }));
 vi.mock("../auth/AuthContext", () => ({
   useAuth: () => ({
-    session: { user: { role: auth.role, organisation: auth.organisation } } as unknown as Session,
+    session: { user: { role: auth.role, organisation: auth.organisation, displayName: "Ngozi" } } as unknown as Session,
     role: auth.role,
   }),
 }));
 
+const { ApiError } = await import("../api/client");
 const { default: SlotsPage } = await import("./SlotsPage");
 
 const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
 
 function slot(id: string, bank: Organisation, startsInHours: number, capacity: number, booked: number): DonationSlot {
   const start = Date.now() + startsInHours * HOUR;
@@ -42,6 +53,25 @@ function slot(id: string, bank: Organisation, startsInHours: number, capacity: n
   };
 }
 
+/** A slot at `time` on the Lagos day `daysAhead` from today. Lagos is UTC+1 all year. */
+function slotOn(id: string, bank: Organisation, daysAhead: number, time: string, capacity: number, booked: number): DonationSlot {
+  const start = Date.parse(`${lagosDay(daysAhead)}T${time}:00+01:00`);
+  return {
+    id,
+    bank,
+    startsAt: new Date(start).toISOString(),
+    endsAt: new Date(start + 2 * HOUR).toISOString(),
+    capacity,
+    booked,
+    placesLeft: capacity - booked,
+  };
+}
+
+function lagosDay(daysAhead: number): string {
+  return addDays(lagosToday(Date.now()), daysAhead);
+}
+
+// 24 and 48 hours ahead are always tomorrow and the day after in Lagos.
 const OPEN = slot("slot-open", BANK, 24, 10, 7);
 const LATER = slot("slot-later", OTHER_BANK, 48, 6, 0);
 
@@ -53,7 +83,24 @@ function list(items: DonationSlot[]): ApiResponse<DonationSlotList> {
   return ok({ computedAt: new Date().toISOString(), items });
 }
 
-function refusal(code: ApiError["code"], status = 409): ApiError {
+function booking(id: string, s: DonationSlot, status: Booking["status"]): Booking {
+  return { id, slot: s, donor: { id: "d-1", displayName: "Ngozi" }, status, createdAt: new Date().toISOString() };
+}
+
+function bookingPage(items: Booking[]) {
+  return ok({ items, page: 0, size: 100, totalItems: items.length });
+}
+
+/** GET /bookings answers by ?status: BOOKED and ATTENDED lists for the donor screen. */
+function bookingsByStatus({ booked = [], attended = [] }: { booked?: Booking[]; attended?: Booking[] }) {
+  mocks.listBookings.mockImplementation(async (query: BookingQuery) => {
+    if (query.status === "BOOKED") return bookingPage(booked);
+    if (query.status === "ATTENDED") return bookingPage(attended);
+    return bookingPage([...booked, ...attended]);
+  });
+}
+
+function refusal(code: ApiErrorType["code"], status = 409): ApiErrorType {
   return new ApiError({ status, code, message: "The service's own words.", requestId: `ref-${code}` });
 }
 
@@ -65,9 +112,12 @@ function renderPage(path = "/slots") {
   );
 }
 
-/** Opens the dialog for the slot at Lagos Central and confirms. */
+const dayButton = (daysAhead: number, count: string) =>
+  screen.getByRole("button", { name: `${shortDayLabel(lagosDay(daysAhead))}, ${count}` });
+
+/** Opens the dialog for the slot at Lagos Central (Ikeja, tomorrow) and confirms. */
 async function bookOpenSlot() {
-  await userEvent.click(await screen.findByRole("button", { name: /^Book Lagos Central Blood Bank/ }));
+  await userEvent.click(await screen.findByRole("button", { name: /^Book this time: .*, Ikeja$/ }));
   const dialog = await screen.findByRole("dialog", { name: "Book this slot?" });
   await userEvent.click(within(dialog).getByRole("button", { name: "Book place" }));
 }
@@ -79,20 +129,206 @@ beforeEach(() => {
   mocks.listDonationSlots.mockReset().mockResolvedValue(list([OPEN, LATER]));
   mocks.bookDonationSlot.mockReset();
   mocks.listBookings.mockReset();
+  bookingsByStatus({});
 });
 
 afterEach(() => cleanup());
 
-describe("SlotsPage: donor books a slot", () => {
-  it("shows bank, Lagos time and places left as text", async () => {
+describe("SlotsPage (donor): choose a day", () => {
+  it("asks for this week's slots, Lagos dates from today", async () => {
     renderPage();
-    expect(await screen.findByText("3 of 10 places left")).toBeTruthy();
-    expect(screen.getByText("6 of 6 places left")).toBeTruthy();
-    expect(screen.getAllByText(/Lagos time$/)).toHaveLength(2);
-    expect(screen.getByRole("heading", { name: "Lagos Central Blood Bank" })).toBeTruthy();
+    await screen.findByText("3 of 10 places left");
+    expect(mocks.listDonationSlots).toHaveBeenCalledWith({ from: lagosDay(0), to: lagosDay(6) }, expect.any(AbortSignal));
   });
 
-  it("books after confirming, says so, and reloads the places", async () => {
+  it("seven days from today in a labelled group, each with its count; empty days disabled", async () => {
+    mocks.listDonationSlots.mockResolvedValue(
+      list([
+        slotOn("a", BANK, 1, "10:00", 10, 7),
+        slotOn("b", OTHER_BANK, 1, "14:00", 6, 5),
+        slotOn("full", BANK, 2, "10:00", 4, 4),
+        slotOn("c", BANK, 3, "09:00", 8, 0),
+      ]),
+    );
+    renderPage();
+    await screen.findByText("3 of 10 places left");
+
+    const group = screen.getByRole("group", { name: "Choose a day" });
+    expect(within(group).getAllByRole("button")).toHaveLength(7);
+    expect(dayButton(1, "2 slots").getAttribute("aria-pressed")).toBe("true");
+    expect(dayButton(3, "1 slot").getAttribute("aria-pressed")).toBe("false");
+    for (const daysAhead of [0, 2, 4, 5, 6]) {
+      const button = dayButton(daysAhead, "No slots");
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+    }
+  });
+
+  it("defaults to the first day with slots and says its count in a live status", async () => {
+    renderPage();
+    const status = await screen.findByText(`${longDayLabel(lagosDay(1))} · 1 slot`);
+    expect(status.getAttribute("role")).toBe("status");
+    // Only that day's cards show.
+    expect(screen.getByText("3 of 10 places left")).toBeTruthy();
+    expect(screen.queryByText("6 of 6 places left")).toBeNull();
+  });
+
+  it("picking another day shows its cards and moves aria-pressed", async () => {
+    renderPage();
+    await screen.findByText("3 of 10 places left");
+    await userEvent.click(dayButton(2, "1 slot"));
+
+    expect(dayButton(2, "1 slot").getAttribute("aria-pressed")).toBe("true");
+    expect(dayButton(1, "1 slot").getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByText("6 of 6 places left")).toBeTruthy();
+    expect(screen.queryByText("3 of 10 places left")).toBeNull();
+    expect(screen.getByText(`${longDayLabel(lagosDay(2))} · 1 slot`)).toBeTruthy();
+  });
+
+  it("time cards: time, area, bank, places; 'Only 1 place left' as a warning", async () => {
+    mocks.listDonationSlots.mockResolvedValue(list([slotOn("a", BANK, 1, "10:00", 10, 7), slotOn("b", OTHER_BANK, 1, "14:00", 6, 5)]));
+    renderPage();
+    expect(await screen.findByRole("heading", { level: 3, name: "10:00–12:00" })).toBeTruthy();
+    const card = screen.getByRole("heading", { level: 3, name: "14:00–16:00" }).closest("li")!;
+    expect(within(card).getByText("Surulere")).toBeTruthy();
+    expect(within(card).getByText("Surulere Blood Centre")).toBeTruthy();
+    expect(within(card).getByText("Only 1 place left").className).toMatch(/text-warning/);
+    expect(
+      screen.getByRole("button", { name: `Book this time: ${shortDayLabel(lagosDay(1))}, 14:00–16:00, Surulere` }),
+    ).toBeTruthy();
+  });
+
+  it("full or past slots wait behind a toggle, with their reason in words", async () => {
+    mocks.listDonationSlots.mockResolvedValue(
+      list([slotOn("a", BANK, 1, "10:00", 10, 7), slotOn("full", OTHER_BANK, 1, "14:00", 4, 4)]),
+    );
+    renderPage();
+    const toggle = await screen.findByRole("button", { name: "Show 1 full or past slot" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    const reason = screen.getByText("Full: no places left.");
+    expect(reason.closest("ul")?.hidden).toBe(true);
+
+    await userEvent.click(toggle);
+    expect(screen.getByRole("button", { name: "Hide 1 full or past slot" }).getAttribute("aria-expanded")).toBe("true");
+    expect(reason.closest("ul")?.hidden).toBe(false);
+    expect(screen.getAllByRole("button", { name: /^Book this time/ })).toHaveLength(1);
+  });
+
+  it("filters by area on our side, from the URL", async () => {
+    renderPage("/slots?area=Surulere");
+    // Only the Surulere slot (the day after tomorrow) is left, so tomorrow has none.
+    expect(await screen.findByText("6 of 6 places left")).toBeTruthy();
+    expect(dayButton(1, "No slots")).toBeTruthy();
+    expect(screen.queryByText("3 of 10 places left")).toBeNull();
+  });
+
+  it("no slots this week: says so", async () => {
+    mocks.listDonationSlots.mockResolvedValue(list([]));
+    renderPage();
+    expect(await screen.findByRole("heading", { name: "No slots this week" })).toBeTruthy();
+  });
+
+  it("error: Try again with the Reference", async () => {
+    mocks.listDonationSlots.mockRejectedValue(new ApiError({ status: 500, code: "INTERNAL_ERROR", message: "Down.", requestId: "ref-500" }));
+    renderPage();
+    expect(await screen.findByText(/Reference: ref-500/)).toBeTruthy();
+    mocks.listDonationSlots.mockResolvedValue(list([OPEN]));
+    await userEvent.click(screen.getByRole("button", { name: /Try again/ }));
+    expect(await screen.findByText("3 of 10 places left")).toBeTruthy();
+  });
+
+  it("headings in order: h1, then h2s", async () => {
+    renderPage();
+    await screen.findByText("3 of 10 places left");
+    const levels = screen.getAllByRole("heading").map((h) => Number(h.tagName.slice(1)));
+    expect(levels[0]).toBe(1);
+    levels.forEach((level, i) => i > 0 && expect(level - levels[i - 1]).toBeLessThanOrEqual(1));
+    expect(screen.getByRole("heading", { level: 1, name: "Give blood this week." })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 2, name: "Before you donate" })).toBeTruthy();
+  });
+});
+
+describe("SlotsPage (donor): booked marker and the hero", () => {
+  it("a slot the donor booked shows 'You're booked' and no button", async () => {
+    const other = slotOn("other", OTHER_BANK, 1, "14:00", 6, 1);
+    mocks.listDonationSlots.mockResolvedValue(list([OPEN, other]));
+    bookingsByStatus({ booked: [booking("b-1", OPEN, "BOOKED")] });
+    renderPage();
+
+    const marker = await screen.findByText("You're booked");
+    const card = marker.closest("li")!;
+    expect(within(card).queryByRole("button")).toBeNull();
+    expect(within(card).queryByText("3 of 10 places left")).toBeNull();
+    expect(screen.getAllByRole("button", { name: /^Book this time/ })).toHaveLength(1);
+  });
+
+  it("next donation: the soonest booking, with Tomorrow, calendar and Manage booking", async () => {
+    const later = slotOn("later", BANK, 4, "09:00", 6, 1);
+    bookingsByStatus({ booked: [booking("b-2", later, "BOOKED"), booking("b-1", OPEN, "BOOKED")] });
+    renderPage();
+
+    const card = (await screen.findByRole("heading", { name: "Your next donation" })).closest("section")!;
+    expect(within(card).getByText("Tomorrow")).toBeTruthy();
+    expect(within(card).getByText(`${BANK.name}, ${BANK.area}`)).toBeTruthy();
+    expect(within(card).getByText(longDayLabel(lagosDay(1)))).toBeTruthy();
+    expect(within(card).getByRole("link", { name: "Manage booking" }).getAttribute("href")).toBe("/bookings");
+    expect(within(card).getByRole("button", { name: "Add to calendar" })).toBeTruthy();
+  });
+
+  it("next donation later today says Today", async () => {
+    // A minute from now is still today in Lagos, except in the last minute before midnight.
+    const soon = slot("soon", BANK, 1 / 60, 6, 1);
+    bookingsByStatus({ booked: [booking("b-1", soon, "BOOKED")] });
+    renderPage();
+    const card = (await screen.findByRole("heading", { name: "Your next donation" })).closest("section")!;
+    expect(within(card).getByText("Today")).toBeTruthy();
+  });
+
+  it("no booking: 'No upcoming donation' and nothing else", async () => {
+    renderPage();
+    expect(await screen.findByText("No upcoming donation")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Your next donation" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add to calendar" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Manage booking" })).toBeNull();
+  });
+
+  it("Add to calendar saves an .ics file of the booking", async () => {
+    const createObjectURL = vi.fn((blob: Blob) => (void blob, "blob:ics"));
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL, revokeObjectURL }));
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    bookingsByStatus({ booked: [booking("b-1", OPEN, "BOOKED")] });
+    renderPage();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Add to calendar" }));
+    expect(click).toHaveBeenCalledTimes(1);
+    const blob = createObjectURL.mock.calls[0][0];
+    expect(blob.type).toBe("text/calendar;charset=utf-8");
+    const text = await blob.text();
+    expect(text).toContain("UID:b-1@bloodlink\r\n");
+    expect(text).toContain(`DTSTART:${OPEN.startsAt.replace(/[-:]/g, "").replace(/\.\d{3}/, "")}\r\n`);
+    expect(text).toContain("LOCATION:Lagos Central Blood Bank\\, Ikeja\r\n");
+    click.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it("donations pill: count and last date from ?status=ATTENDED", async () => {
+    const past = (id: string, daysAgo: number) =>
+      booking(id, { ...OPEN, id: `s-${id}`, startsAt: new Date(Date.now() - daysAgo * DAY).toISOString() }, "ATTENDED");
+    bookingsByStatus({ attended: [past("a", 200), past("b", 40), past("c", 120)] });
+    renderPage();
+    expect(await screen.findByText(/^3 donations · last on \d{1,2} [A-Z][a-z]{2}$/)).toBeTruthy();
+    expect(mocks.listBookings).toHaveBeenCalledWith({ status: "ATTENDED", page: 0, size: 100 }, expect.any(AbortSignal));
+  });
+
+  it("donations pill: hidden with no donations", async () => {
+    renderPage();
+    await screen.findByText("No upcoming donation");
+    expect(screen.queryByText(/donations? · last on/)).toBeNull();
+  });
+});
+
+describe("SlotsPage (donor): booking", () => {
+  it("books after confirming, says so, and reloads the places and the donor's bookings", async () => {
     mocks.bookDonationSlot.mockResolvedValue({ ...ok({}), status: 201 });
     renderPage();
     await bookOpenSlot();
@@ -101,6 +337,16 @@ describe("SlotsPage: donor books a slot", () => {
     expect(mocks.bookDonationSlot).toHaveBeenCalledTimes(1);
     expect(mocks.bookDonationSlot).toHaveBeenCalledWith("slot-open");
     await waitFor(() => expect(mocks.listDonationSlots).toHaveBeenCalledTimes(2));
+    const bookedReads = mocks.listBookings.mock.calls.filter(([query]) => query.status === "BOOKED");
+    expect(bookedReads).toHaveLength(2);
+  });
+
+  it("the result message takes focus once the dialog closes", async () => {
+    mocks.bookDonationSlot.mockResolvedValue({ ...ok({}), status: 201 });
+    renderPage();
+    await bookOpenSlot();
+    const message = await screen.findByText(/^Booked: Lagos Central Blood Bank/);
+    await waitFor(() => expect(message.closest("[tabindex='-1']")).toBe(document.activeElement));
   });
 
   it("is not optimistic: places stay as loaded until the service answers", async () => {
@@ -115,9 +361,7 @@ describe("SlotsPage: donor books a slot", () => {
     answer({ ...ok({}), status: 201 });
     expect(await screen.findByText(/^Booked:/)).toBeTruthy();
   });
-});
 
-describe("SlotsPage: refused bookings", () => {
   it("409 SLOT_FULL: 'This slot just filled up', with the Reference, and a reload", async () => {
     mocks.bookDonationSlot.mockRejectedValue(refusal("SLOT_FULL"));
     renderPage();
@@ -150,7 +394,6 @@ describe("SlotsPage: refused bookings", () => {
 
   it("timeout: doesn't book again; checks the donor's bookings and says it wasn't booked", async () => {
     mocks.bookDonationSlot.mockRejectedValue(refusal("TIMEOUT", 0));
-    mocks.listBookings.mockResolvedValue(ok({ items: [], page: 0, size: 100, totalItems: 0 }));
     renderPage();
     await bookOpenSlot();
 
@@ -162,51 +405,46 @@ describe("SlotsPage: refused bookings", () => {
 
   it("lost connection: says the booking now shows when the service has it", async () => {
     mocks.bookDonationSlot.mockRejectedValue(refusal("NETWORK_ERROR", 0));
-    mocks.listBookings.mockResolvedValue(
-      ok({
-        items: [{ id: "b-1", slot: OPEN, donor: { id: "d-1", displayName: "Ngozi" }, status: "BOOKED", createdAt: new Date().toISOString() }],
-        page: 0,
-        size: 100,
-        totalItems: 1,
-      }),
-    );
     renderPage();
+    await screen.findByText("3 of 10 places left");
+    // The service made the booking after all.
+    bookingsByStatus({ booked: [booking("b-1", OPEN, "BOOKED")] });
     await bookOpenSlot();
 
     expect(await screen.findByText(/your bookings now show a place for you/)).toBeTruthy();
     expect(mocks.bookDonationSlot).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("You're booked")).toBeTruthy();
   });
 });
 
-describe("SlotsPage: what each role is offered", () => {
-  it("no Book on a full or started slot, with the reason in words", async () => {
-    mocks.listDonationSlots.mockResolvedValue(list([slot("full", BANK, 24, 4, 4), slot("started", OTHER_BANK, -0.5, 8, 3)]));
+describe("SlotsPage (staff): the list and what each role is offered", () => {
+  beforeEach(() => {
+    auth.role = "BANK_STAFF";
+    auth.organisation = BANK;
+  });
+
+  it("shows bank, Lagos time and places left as text", async () => {
     renderPage();
-    expect(await screen.findByText("Full: no places left.")).toBeTruthy();
-    expect(screen.getByText("Booking closed: this slot has started.")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /^Book / })).toBeNull();
+    expect(await screen.findByText("3 of 10 places left")).toBeTruthy();
+    expect(screen.getByText("6 of 6 places left")).toBeTruthy();
+    expect(screen.getAllByText(/Lagos time$/)).toHaveLength(2);
+    expect(screen.getByRole("heading", { name: "Lagos Central Blood Bank" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Give blood this week." })).toBeNull();
   });
 
   it("only bank staff get New slot", async () => {
     renderPage();
-    await screen.findByText("3 of 10 places left");
-    expect(screen.queryByRole("link", { name: "New slot" })).toBeNull();
+    expect((await screen.findByRole("link", { name: "New slot" })).getAttribute("href")).toBe("/slots/new");
     cleanup();
 
-    auth.role = "BANK_STAFF";
-    auth.organisation = BANK;
+    auth.role = "ADMIN";
+    auth.organisation = null;
     renderPage();
-    expect((await screen.findByRole("link", { name: "New slot" })).getAttribute("href")).toBe("/slots/new");
+    await screen.findByText("3 of 10 places left");
+    expect(screen.queryByRole("link", { name: "New slot" })).toBeNull();
   });
 
   it("View bookings: on the staff's own bank's slots only; on every slot for the administrator; never for donors", async () => {
-    renderPage();
-    await screen.findByText("3 of 10 places left");
-    expect(screen.queryByRole("link", { name: /^View bookings/ })).toBeNull();
-    cleanup();
-
-    auth.role = "BANK_STAFF";
-    auth.organisation = BANK;
     renderPage();
     const links = await screen.findAllByRole("link", { name: /^View bookings/ });
     expect(links).toHaveLength(1);
@@ -218,6 +456,12 @@ describe("SlotsPage: what each role is offered", () => {
     auth.organisation = null;
     renderPage();
     expect(await screen.findAllByRole("link", { name: /^View bookings/ })).toHaveLength(2);
+    cleanup();
+
+    auth.role = "DONOR";
+    renderPage();
+    await screen.findByText("3 of 10 places left");
+    expect(screen.queryByRole("link", { name: /^View bookings/ })).toBeNull();
   });
 
   it.each([["BANK_STAFF"], ["ADMIN"]] as const)("%s sees the slots but no Book button", async (role) => {
@@ -225,11 +469,16 @@ describe("SlotsPage: what each role is offered", () => {
     auth.organisation = role === "BANK_STAFF" ? BANK : null;
     renderPage();
     expect(await screen.findByText("3 of 10 places left")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /^Book / })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Book/ })).toBeNull();
   });
 });
 
-describe("SlotsPage: filters", () => {
+describe("SlotsPage (staff): filters", () => {
+  beforeEach(() => {
+    auth.role = "BANK_STAFF";
+    auth.organisation = BANK;
+  });
+
   it("refuses a range over 31 days in the form, with a clear message, and sends nothing", async () => {
     renderPage();
     await screen.findByText("3 of 10 places left");

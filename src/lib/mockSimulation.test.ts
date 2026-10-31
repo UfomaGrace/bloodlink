@@ -4,9 +4,11 @@ import { withPassedHolds } from "./holds";
 import { freeUnitsMeet, releasableHolds } from "./holdRelease";
 import { canIssue, canReleaseHold, expiredHeldUnits, type Viewer } from "./requestActions";
 import { canCancelBooking, canRecordAttendance, hasSlotEnded, hasSlotStarted, splitBookings } from "./donations";
+import { buildWeek, donationsSummary, nextBooking, relativeDayLabel, slotLagosDay } from "./donorWeek";
 import {
   SIMULATED_HOLD_MS,
   simulateBookings,
+  simulateDonorWeek,
   simulateHoldReleaseScan,
   simulateRequest,
   simulateRequestDetail,
@@ -140,6 +142,40 @@ describe("simulateBookings", () => {
 
   it("Empty (first use): no bookings", () => {
     expect(simulateBookings("EMPTY", PICKED, "Ngozi")).toEqual([]);
+  });
+});
+
+describe("simulateDonorWeek", () => {
+  it("a week from today with something for every part of the donor screen", () => {
+    const { slots, booked, attended } = simulateDonorWeek("WEEK", PICKED, "Ngozi");
+    const bookedIds = new Set(booked.map((b) => b.slot.id));
+    const week = buildWeek(slots.items, bookedIds, PICKED);
+    // Every slot falls inside the seven days.
+    expect(week.flatMap((d) => d.slots)).toHaveLength(slots.items.length);
+    // Today has only a started slot; tomorrow has three; one day has none.
+    expect(week.map((d) => d.bookable)).toEqual([0, 2, 1, 0, 2, 1, 1]);
+    expect(week[0].disabled).toBe(true);
+    const tomorrow = week[1].slots;
+    expect(tomorrow.some((s) => s.placesLeft === 1)).toBe(true);
+    expect(tomorrow.some((s) => s.placesLeft === 0)).toBe(true);
+    // The booked slot is in the list, so the marker shows; and it is the next donation, tomorrow.
+    expect(tomorrow.some((s) => bookedIds.has(s.id))).toBe(true);
+    const next = nextBooking(booked, PICKED);
+    expect(next && relativeDayLabel(slotLagosDay(next.slot), PICKED)).toBe("Tomorrow");
+    expect(donationsSummary(attended)?.count).toBe(3);
+  });
+
+  it("uses well-formed ids, since a booking sends the slot id to the mock", () => {
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+    const { slots, booked, attended } = simulateDonorWeek("WEEK", PICKED, "Ngozi");
+    for (const id of [...slots.items.map((s) => s.id), ...[...booked, ...attended].flatMap((b) => [b.id, b.slot.id])]) {
+      expect(id).toMatch(uuid);
+    }
+  });
+
+  it("without bookings, and empty", () => {
+    expect(simulateDonorWeek("WEEK_NO_BOOKINGS", PICKED, "Ngozi")).toMatchObject({ booked: [], attended: [] });
+    expect(simulateDonorWeek("EMPTY", PICKED, "Ngozi").slots.items).toEqual([]);
   });
 });
 

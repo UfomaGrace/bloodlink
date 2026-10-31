@@ -2,7 +2,7 @@ import { lazy, Suspense, type ReactNode } from "react";
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router";
 import type { Role } from "./api/types";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
-import Layout, { HomeRedirect, RequireRole } from "./components/layout/Layout";
+import Layout, { FullBleed, HomeRedirect, RequireRole } from "./components/layout/Layout";
 import LoginPage from "./pages/LoginPage";
 import { Skeleton } from "./shared/ui/skeleton";
 
@@ -146,9 +146,12 @@ export default function App() {
               <Route
                 path="slots"
                 element={
-                  <RequireRole roles={DONOR_BANK_AND_ADMIN}>
-                    <SlotsPage />
-                  </RequireRole>
+                  // Donors get a hero band edge to edge; staff keep the usual column.
+                  <FullBleed roles={DONOR_ONLY}>
+                    <RequireRole roles={DONOR_BANK_AND_ADMIN}>
+                      <SlotsPage />
+                    </RequireRole>
+                  </FullBleed>
                 }
               />
               <Route

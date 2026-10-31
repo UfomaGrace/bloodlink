@@ -9,7 +9,8 @@
 // Every call still goes through api/endpoints.
 
 import { api } from "../api/endpoints";
-import type { Booking, DonationSlot, DonationSlotList, DonationSlotQuery } from "../api/types";
+import type { Booking, BookingStatus, DonationSlot, DonationSlotList, DonationSlotQuery, Organisation } from "../api/types";
+import type { LabelOption } from "./labels";
 
 /** The contract's largest page for GET /bookings. */
 const BOOKINGS_PAGE_SIZE = 100;
@@ -29,20 +30,36 @@ export async function listSlotsInArea(
   signal?: AbortSignal,
 ): Promise<DonationSlotList> {
   const { data } = await api.listDonationSlots(query, signal);
-  if (!area) return data;
+  return area ? { ...data, items: filterSlotsByArea(data.items, area) } : data;
+}
+
+/** The slots whose bank is in `area` (exact match, case and spaces ignored). listSlotsInArea's filter. */
+export function filterSlotsByArea(slots: readonly DonationSlot[], area: string): DonationSlot[] {
   const wanted = normaliseArea(area);
-  return { ...data, items: data.items.filter((slot) => normaliseArea(slot.bank.area) === wanted) };
+  return slots.filter((slot) => normaliseArea(slot.bank.area) === wanted);
+}
+
+/** Each area once, A to Z, as the banks list spells it: the choices for an area filter. */
+export function areaOptions(banks: readonly Organisation[]): LabelOption<string>[] {
+  const areas = new Map<string, string>();
+  for (const bank of banks) {
+    const key = normaliseArea(bank.area);
+    if (key && !areas.has(key)) areas.set(key, bank.area.trim());
+  }
+  return [...areas.values()].sort((a, b) => a.localeCompare(b)).map((area) => ({ value: area, label: area }));
 }
 
 /**
  * Every booking the caller can see (a donor's own, a bank's slots', or all for the administrator),
  * read page by page at the contract's largest size. Not a workaround: GET /bookings is paged,
- * and "upcoming" and "past" need the whole list to be split correctly.
+ * and "upcoming" and "past" need the whole list to be split correctly. `status` narrows it on the
+ * service's side (?status=ATTENDED for a donor's donations).
  */
-export async function listAllBookings(signal?: AbortSignal): Promise<Booking[]> {
+export async function listAllBookings(signal?: AbortSignal, status?: BookingStatus): Promise<Booking[]> {
   const found: Booking[] = [];
   for (let page = 0; page < MAX_BOOKING_PAGES; page++) {
-    const { data } = await api.listBookings({ page, size: BOOKINGS_PAGE_SIZE }, signal);
+    const query = status ? { status, page, size: BOOKINGS_PAGE_SIZE } : { page, size: BOOKINGS_PAGE_SIZE };
+    const { data } = await api.listBookings(query, signal);
     found.push(...data.items);
     const read = (page + 1) * BOOKINGS_PAGE_SIZE;
     if (data.items.length === 0 || read >= data.totalItems) break;

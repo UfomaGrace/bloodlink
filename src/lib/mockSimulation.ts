@@ -24,6 +24,9 @@
 //
 // Bookings: Prism sends one canned booking in that started slot, so nothing can be cancelled.
 // simulateBookings gives upcoming ones (cancellable), one in a started slot, and past ones.
+// simulateDonorWeek gives the donor's slot screen a week of slots from today (Lagos), one booked
+// by the donor, and three past donations, so the hero card, the donations pill, the day counts and
+// the booked marker all show. Display only, like the rest.
 // simulateSlotDetail gives one slot (the id in the URL, run by the viewer's bank) started with
 // bookings to record, not started yet, or with nobody booked.
 
@@ -378,6 +381,55 @@ export function simulateBookings(state: BookingListSimulation, at: number, donor
     sampleBooking(5, sampleSlot(15, bankA, lagosAt(at, -7, "09:00"), lagosAt(at, -7, "11:00"), 10, 9), "ATTENDED", donorName, at),
     sampleBooking(6, sampleSlot(16, bankB, lagosAt(at, -14, "14:00"), lagosAt(at, -14, "16:00"), 6, 6), "NO_SHOW", donorName, at),
   ];
+}
+
+export type DonorWeekSimulation = "WEEK" | "WEEK_NO_BOOKINGS" | "EMPTY";
+
+export const DONOR_WEEK_SIMULATION_LABELS: Record<DonorWeekSimulation, string> = {
+  WEEK: "A week of slots, with your bookings",
+  WEEK_NO_BOOKINGS: "A week of slots, no bookings yet",
+  EMPTY: "No slots this week (first use)",
+};
+
+/** What the donor's slot screen reads: the week's slots, their BOOKED and ATTENDED bookings, and the banks. */
+export type DonorWeek = { slots: DonationSlotList; booked: Booking[]; attended: Booking[]; banks: Organisation[] };
+
+/**
+ * The donor's week for `state`, with dates from `at` (ms), Lagos days counted from today:
+ *   today     one slot that started 30 minutes ago (shown under "full or past"; the day has nothing to book)
+ *   +1 day    09:00 booked by the donor (the hero's "Tomorrow"), 14:00 with 1 place left, 15:00 full
+ *   +2, +4, +5, +6  slots with places left; +3 has none
+ * "With your bookings" adds three ATTENDED bookings, 40, 160 and 280 days back.
+ */
+export function simulateDonorWeek(state: DonorWeekSimulation, at: number, donorName: string): DonorWeek {
+  const [bankA, bankB] = SAMPLE_BANKS;
+  const banks = [...SAMPLE_BANKS];
+  const computedAt = new Date(at).toISOString();
+  if (state === "EMPTY") return { slots: { computedAt, items: [] }, booked: [], attended: [], banks };
+
+  const mine = sampleSlot(21, bankA, lagosAt(at, 1, "09:00"), lagosAt(at, 1, "11:00"), 10, 6);
+  const items = [
+    sampleSlot(20, bankB, new Date(at - 30 * MINUTE_MS).toISOString(), new Date(at + 90 * MINUTE_MS).toISOString(), 8, 3),
+    mine,
+    sampleSlot(22, bankA, lagosAt(at, 1, "14:00"), lagosAt(at, 1, "16:00"), 6, 5),
+    sampleSlot(23, bankB, lagosAt(at, 1, "15:00"), lagosAt(at, 1, "17:00"), 8, 8),
+    sampleSlot(24, bankB, lagosAt(at, 2, "10:00"), lagosAt(at, 2, "12:00"), 6, 2),
+    sampleSlot(25, bankA, lagosAt(at, 4, "09:00"), lagosAt(at, 4, "11:00"), 10, 4),
+    sampleSlot(26, bankB, lagosAt(at, 4, "13:00"), lagosAt(at, 4, "15:00"), 6, 0),
+    sampleSlot(27, bankA, lagosAt(at, 5, "10:00"), lagosAt(at, 5, "12:00"), 4, 1),
+    sampleSlot(28, bankB, lagosAt(at, 6, "08:00"), lagosAt(at, 6, "10:00"), 8, 2),
+  ];
+  const slots = { computedAt, items };
+  if (state === "WEEK_NO_BOOKINGS") return { slots, booked: [], attended: [], banks };
+
+  const past = (n: number, daysAgo: number, bank: Organisation) =>
+    sampleBooking(n, sampleSlot(30 + n, bank, lagosAt(at, -daysAgo, "10:00"), lagosAt(at, -daysAgo, "12:00"), 8, 8), "ATTENDED", donorName, at);
+  return {
+    slots,
+    booked: [sampleBooking(7, mine, "BOOKED", donorName, at)],
+    attended: [past(8, 40, bankA), past(9, 160, bankB), past(0, 280, bankA)], // sampleBooking ids take one digit
+    banks,
+  };
 }
 
 export type SlotDetailSimulation = "STARTED_WITH_BOOKINGS" | "NOT_STARTED" | "EMPTY";
