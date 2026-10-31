@@ -8,6 +8,7 @@ import { Skeleton } from "./shared/ui/skeleton";
 
 // Each signed-in page is its own chunk, fetched the first time it is opened. LoginPage and
 // Layout stay in the main bundle, so the first screen and the frame never wait on a chunk.
+const AccountPage = lazy(() => import("./pages/AccountPage"));
 const AvailabilityPage = lazy(() => import("./pages/AvailabilityPage"));
 const BookingsPage = lazy(() => import("./pages/BookingsPage"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
@@ -178,6 +179,8 @@ export default function App() {
                   </RequireRole>
                 }
               />
+              {/* Every signed-in role has an account page. */}
+              <Route path="account" element={<AccountPage />} />
             </Route>
             <Route path="*" element={<NotFoundPage />} />
           </Route>

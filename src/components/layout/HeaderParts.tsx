@@ -3,11 +3,12 @@
 //
 // - BrandStripe: the 3px primary stripe along the header's top edge. Decorative, so aria-hidden.
 // - UserBlock: initials, name, and the role label. Hospital staff also see their organisation
-//   ("Hospital staff · Ikeja General Hospital"); long text truncates.
+//   ("Hospital staff · Ikeja General Hospital"); long text truncates. The whole block links to
+//   /account, named "Your account, <name>", with aria-current="page" while there.
 // - All of it sits on the white bar, so the default (primary) focus ring applies.
 
 import { Droplet } from "lucide-react";
-import { Link } from "react-router";
+import { Link, NavLink } from "react-router";
 import type { Role, User } from "../../api/types";
 import { cn } from "../../shared/cn";
 import { Button } from "../../shared/ui/button";
@@ -49,7 +50,17 @@ export function userSubtitle(role: Role, user: User): string {
 
 export function UserBlock({ role, user, className }: { role: Role; user: User; className?: string }) {
   return (
-    <div data-testid="user-block" className={cn("flex min-w-0 items-center gap-2", className)}>
+    <NavLink
+      to="/account"
+      end
+      aria-label={`Your account, ${user.displayName}`}
+      data-testid="user-block"
+      className={cn(
+        "-mx-2 flex min-h-11 min-w-0 items-center gap-2 rounded-md px-2 transition-colors hover:bg-(--color-surface-hover)",
+        focusRing,
+        className,
+      )}
+    >
       <span
         aria-hidden="true"
         className="flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold text-on-secondary"
@@ -60,7 +71,7 @@ export function UserBlock({ role, user, className }: { role: Role; user: User; c
         <span className="block truncate font-medium">{user.displayName}</span>
         <span className="block truncate text-muted-foreground">{userSubtitle(role, user)}</span>
       </p>
-    </div>
+    </NavLink>
   );
 }
 

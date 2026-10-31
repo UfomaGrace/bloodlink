@@ -298,6 +298,7 @@ describe("Layout: staff shell order", () => {
       "Collapse sidebar",
       "BloodLink",
       "Record unit",
+      "Your account, Ada Obi",
       "Sign out",
       ...BANK_LINKS,
       "main",
@@ -379,6 +380,34 @@ describe("Layout: hospital staff and donors get the white top bar with the nav i
     expect(button.className).toContain("underline");
     fireEvent.click(button);
     expect(mocks.signOut).toHaveBeenCalled();
+  });
+});
+
+describe("Layout: the user block links to the account page", () => {
+  it.each(["BANK_STAFF", "ADMIN"] as const)("%s: from the staff top bar and the narrow header", (role) => {
+    renderAt("/dashboard", role);
+    for (const header of screen.getAllByRole("banner")) {
+      const link = within(header).getByRole("link", { name: "Your account, Ada Obi" });
+      expect(link.getAttribute("href")).toBe("/account");
+      expect(link).toBe(within(header).getByTestId("user-block"));
+    }
+  });
+
+  it.each(["HOSPITAL_STAFF", "DONOR"] as const)("%s: from the top bar", (role) => {
+    renderAt("/requests", role);
+    const link = within(screen.getByRole("banner")).getByRole("link", { name: "Your account, Ada Obi" });
+    expect(link.getAttribute("href")).toBe("/account");
+    expect(link.className).toContain("min-h-11");
+  });
+
+  it("is marked as the current page only on /account", () => {
+    renderAt("/account", "DONOR");
+    const link = screen.getByRole("link", { name: "Your account, Ada Obi" });
+    expect(link.getAttribute("aria-current")).toBe("page");
+    cleanup();
+
+    renderAt("/slots", "DONOR");
+    expect(screen.getByRole("link", { name: "Your account, Ada Obi" }).hasAttribute("aria-current")).toBe(false);
   });
 });
 
