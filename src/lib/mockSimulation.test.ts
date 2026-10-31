@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { BloodRequest, Reservation } from "../api/types";
+import type { BloodRequest, Booking, Reservation } from "../api/types";
 import { withPassedHolds } from "./holds";
 import { freeUnitsMeet, releasableHolds } from "./holdRelease";
 import { canIssue, canReleaseHold, expiredHeldUnits, type Viewer } from "./requestActions";
 import { canCancelBooking, canRecordAttendance, hasSlotEnded, hasSlotStarted, splitBookings } from "./donations";
-import { buildWeek, donationsSummary, nextBooking, relativeDayLabel, slotLagosDay } from "./donorWeek";
+import { buildWeek, donationsBand, donationsSummary, nextBooking, relativeDayLabel, slotClockRange, slotLagosDay } from "./donorWeek";
 import {
+  lagosMonthsAgo,
   SIMULATED_HOLD_MS,
   simulateBookings,
   simulateDonorWeek,
@@ -128,7 +129,7 @@ describe("simulateBookings", () => {
     expect(bookings.filter((b) => canCancelBooking(b, donor, PICKED))).toHaveLength(2);
     expect(bookings.some((b) => b.status === "BOOKED" && hasSlotStarted(b.slot, PICKED) && !hasSlotEnded(b.slot, PICKED))).toBe(true);
     const { past } = splitBookings(bookings, PICKED);
-    expect(past.map((b) => b.status)).toEqual(["ATTENDED", "NO_SHOW"]);
+    expect(past.map((b) => b.status)).toEqual(["NO_SHOW", "ATTENDED", "ATTENDED", "ATTENDED"]);
     expect(bookings.every((b) => b.donor.displayName === "Ngozi Adeyemi (demo)")).toBe(true);
   });
 
@@ -142,6 +143,32 @@ describe("simulateBookings", () => {
 
   it("Empty (first use): no bookings", () => {
     expect(simulateBookings("EMPTY", PICKED, "Ngozi")).toEqual([]);
+  });
+});
+
+describe("the donor's sample donations", () => {
+  const attendedDays = (bookings: readonly Booking[]) =>
+    bookings.filter((b) => b.status === "ATTENDED").map((b) => slotLagosDay(b.slot));
+
+  it("3 donations on both screens, 4, 8 and 12 months back (Lagos dates), all in the past", () => {
+    const fromBookings = simulateBookings("SAMPLE", PICKED, "Ngozi");
+    const fromWeek = simulateDonorWeek("WEEK", PICKED, "Ngozi").attended;
+    expect(attendedDays(fromBookings)).toEqual(["2026-06-28", "2026-02-28", "2025-10-28"]);
+    expect(attendedDays(fromWeek)).toEqual(attendedDays(fromBookings));
+    expect(donationsSummary(fromWeek)?.count).toBe(3);
+    expect(donationsBand(fromBookings, PICKED)).toEqual({ count: 3, lastLabel: "28 June" });
+    for (const b of [...fromBookings, ...fromWeek].filter((b) => b.status === "ATTENDED")) {
+      expect(hasSlotEnded(b.slot, PICKED)).toBe(true);
+      expect(slotClockRange(b.slot).label).toBe("10:00–12:00");
+      expect(Date.parse(b.createdAt)).toBeLessThan(Date.parse(b.slot.startsAt));
+    }
+  });
+
+  it("counts calendar months in Lagos, falling back to the month's last day", () => {
+    // 31 Oct 2026, 23:30 Lagos is still 31 Oct there (22:30 UTC).
+    const lateOct31 = at("2026-10-31T22:30:00Z");
+    expect([4, 8, 12].map((m) => lagosMonthsAgo(lateOct31, m))).toEqual(["2026-06-30", "2026-02-28", "2025-10-31"]);
+    expect(lagosMonthsAgo(at("2026-01-15T10:00:00Z"), 4)).toBe("2025-09-15");
   });
 });
 

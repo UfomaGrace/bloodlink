@@ -24,7 +24,8 @@
 //   handled as above, the note closes and the donor stays here.
 // - States: loading, error (+ Try again, Reference), list, refreshing.
 // - Mock only: "Simulate state" swaps in upcoming and past bookings, or none, with dates counted
-//   from the moment it is picked. Prism's own answer is one booking in a slot that has started.
+//   from the moment it is picked. Prism's own answer is one booking in a slot that has started,
+//   so the page starts on "Upcoming and past bookings" (three donations, 4, 8 and 12 months back).
 
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
@@ -87,8 +88,11 @@ export default function BookingsPage() {
     bookings.reload();
   }
 
-  // Mock only: the simulation picked, and when (its dates count from then).
-  const [simulated, setSimulated] = useState<{ state: BookingListSimulation; at: number } | null>(null);
+  // Mock only: the simulation picked, and when (its dates count from then). Starts on the sample
+  // bookings, so the band shows the donor's donations against Prism.
+  const [simulated, setSimulated] = useState<{ state: BookingListSimulation; at: number } | null>(() =>
+    IS_MOCK ? { state: "SAMPLE", at: Date.now() } : null,
+  );
   function pickSimulation(next: BookingListSimulation | null) {
     setSimulated(next && { state: next, at: Date.now() });
   }

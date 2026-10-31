@@ -6,6 +6,8 @@
 //   left" in warning text), and an outline "Book this time". Its accessible name starts with the
 //   visible words and adds the day, time and area, so every button on the screen is unique.
 // - Booked by the donor (matched on booking.slot.id): a tinted card, "You're booked", no button.
+// - Below sm the card is a grid: the time and places left share the top row, then "area · bank"
+//   on one line, then a full-width 46px button. The DOM order stays the same as on wider screens.
 
 import { Check } from "lucide-react";
 import { useId, useState } from "react";
@@ -89,19 +91,31 @@ function TimeCard({
     <li
       className={cn(
         "flex min-w-0 flex-col rounded-md border p-4",
+        "max-sm:grid max-sm:grid-cols-[minmax(0,1fr)_auto] max-sm:items-baseline max-sm:gap-x-3",
         booked ? "border-primary bg-(--color-surface-hover)" : "border-border bg-surface",
       )}
     >
-      <h3 className="text-2xl font-semibold tracking-tight tabular-nums">
+      <h3 className="text-2xl font-semibold tracking-tight tabular-nums max-sm:col-start-1 max-sm:row-start-1">
         <time dateTime={slot.startsAt}>{time}</time>
       </h3>
-      {endsNextDay && <p className="text-xs text-muted-foreground">Ends the next day</p>}
-      <p className="mt-3 font-semibold wrap-break-word">{slot.bank.area}</p>
-      <p className="text-sm text-muted-foreground wrap-break-word">{slot.bank.name}</p>
+      {endsNextDay && <p className="text-xs text-muted-foreground max-sm:col-span-2">Ends the next day</p>}
+      <div className="mt-3 max-sm:col-span-2 max-sm:mt-1">
+        <p className="font-semibold wrap-break-word max-sm:inline">{slot.bank.area}</p>
+        <span className="sm:hidden"> · </span>
+        <p className="text-sm text-muted-foreground wrap-break-word max-sm:inline">{slot.bank.name}</p>
+      </div>
       {!booked && (
-        <p className={cn("mt-3 text-sm font-medium", places.lastPlace && "text-warning")}>{places.text}</p>
+        <p
+          className={cn(
+            "mt-3 text-sm font-medium",
+            "max-sm:col-start-2 max-sm:row-start-1 max-sm:mt-0 max-sm:text-right max-sm:whitespace-nowrap",
+            places.lastPlace && "text-warning",
+          )}
+        >
+          {places.text}
+        </p>
       )}
-      <div className="mt-auto pt-4">
+      <div className="mt-auto pt-4 max-sm:col-span-2">
         {booked ? (
           <p className="flex items-center gap-1.5 text-sm font-semibold text-primary">
             <Check aria-hidden="true" className="size-4" />
@@ -112,7 +126,7 @@ function TimeCard({
         ) : (
           <Button
             variant="secondary"
-            className="min-h-11 w-full border-primary bg-surface text-primary hover:bg-(--color-surface-hover)"
+            className="min-h-11 w-full max-sm:min-h-[46px] border-primary bg-surface text-primary hover:bg-(--color-surface-hover)"
             disabled={bookDisabled}
             onClick={() => onBook(slot)}
             aria-label={`Book this time: ${shortDayLabel(slotLagosDay(slot))}, ${time}, ${slot.bank.area}`}

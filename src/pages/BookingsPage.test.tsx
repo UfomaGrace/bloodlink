@@ -5,8 +5,12 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, type ApiResponse } from "../api/client";
+import type { ApiError as ApiErrorType, ApiResponse } from "../api/client";
 import type { Booking, BookingPage, Organisation, Session } from "../api/types";
+
+// IS_MOCK is read from VITE_MOCK when api/client loads. .env.local may say VITE_MOCK=true, which
+// would swap in the simulated bookings, so these tests pin it off before importing.
+vi.stubEnv("VITE_MOCK", "false");
 
 const BANK: Organisation = { id: "bank-1", name: "Lagos Central Blood Bank", type: "BLOOD_BANK", area: "Ikeja" };
 const OTHER_BANK: Organisation = { id: "bank-2", name: "Surulere Blood Centre", type: "BLOOD_BANK", area: "Surulere" };
@@ -20,6 +24,7 @@ vi.mock("../auth/AuthContext", () => ({
   }),
 }));
 
+const { ApiError } = await import("../api/client");
 const { default: BookingsPage } = await import("./BookingsPage");
 
 const HOUR = 3_600_000;
@@ -57,7 +62,7 @@ function page(items: Booking[]): ApiResponse<BookingPage> {
   return { data: { items, page: 0, size: 100, totalItems: items.length }, status: 200, requestId: "ref-ok", headers: new Headers() };
 }
 
-function refusal(code: ApiError["code"], status = 409): ApiError {
+function refusal(code: ApiErrorType["code"], status = 409): ApiErrorType {
   return new ApiError({ status, code, message: "The service's own words.", requestId: `ref-${code}` });
 }
 
@@ -101,7 +106,10 @@ describe("BookingsPage: donations band", () => {
     mocks.listBookings.mockResolvedValue(page([ATTENDED_EARLIER, UPCOMING, ATTENDED, NO_SHOW]));
     renderPage();
     expect(await screen.findByRole("heading", { level: 1, name: "My bookings: 2 donations so far" })).toBeTruthy();
-    expect(screen.getByText("Thank you. Each one helps a patient in Lagos. Last on 24 October.")).toBeTruthy();
+    const thanks = screen.getByText((_, el) => el?.tagName === "P" && el.textContent?.startsWith("Thank you.") === true);
+    expect(thanks.textContent).toBe("Thank you. Each one helps a patient in Lagos. Last on 24 October.");
+    // Phones get the short line: the middle sentence is hidden below sm.
+    expect(within(thanks).getByText("Each one helps a patient in Lagos.", { exact: false }).className).toContain("max-sm:hidden");
   });
 
   it("n = 0: the first donation is waiting, with no number", async () => {
@@ -140,7 +148,11 @@ describe("BookingsPage: upcoming", () => {
     renderPage();
     await screen.findByRole("region", { name: "Upcoming" });
     expect(screen.getAllByRole("button", { name: /^Cancel booking/ })).toHaveLength(1);
-    expect(screen.getByText("You can cancel until 12:00 tomorrow.")).toBeTruthy();
+    // In the card's footer from sm, under the card on phones; CSS shows one.
+    const until = screen.getAllByText("You can cancel until 12:00 tomorrow.");
+    expect(until).toHaveLength(2);
+    expect(until[0].className).toContain("max-sm:hidden");
+    expect(until[1].className).toMatch(/(^| )sm:hidden/);
     expect(screen.getByText("Started · too late to cancel")).toBeTruthy();
   });
 

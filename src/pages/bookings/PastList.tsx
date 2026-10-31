@@ -6,6 +6,8 @@
 //   and BOOKED in a slot that has ended "Not recorded yet" (muted: the bank hasn't recorded it).
 //   The ✓ is hidden from screen readers. Statuses never wrap.
 // - The tile is aria-hidden; the full Lagos date is in a <time> for screen readers.
+// - Below sm: the bank name truncates, the time joins the area line ("Ikeja · 09:00–11:00") instead
+//   of its own column (CSS shows one of the two), and the status sits on the right of the first row.
 
 import type { Booking, BookingStatus } from "../../api/types";
 import { dayNames, longDayLabel, slotClockRange, slotLagosDay } from "../../lib/donorWeek";
@@ -53,6 +55,7 @@ export function PastList({ bookings }: { bookings: readonly Booking[] }) {
       {bookings.map((booking) => {
         const { slot } = booking;
         const date = slotLagosDay(slot);
+        const time = slotClockRange(slot).label;
         return (
           <li
             key={booking.id}
@@ -60,15 +63,16 @@ export function PastList({ bookings }: { bookings: readonly Booking[] }) {
           >
             <DateTile date={date} tone="past" />
             <div className="min-w-0">
-              <p className="font-medium wrap-break-word">{slot.bank.name}</p>
+              <p className="font-medium wrap-break-word max-sm:truncate">{slot.bank.name}</p>
               <p className="text-sm text-muted-foreground wrap-break-word">
                 <span className="sr-only">
                   <time dateTime={slot.startsAt}>{longDayLabel(date)}</time>,{" "}
                 </span>
                 {slot.bank.area}
+                <span className="tabular-nums sm:hidden"> · {time}</span>
               </p>
             </div>
-            <p className="text-sm whitespace-nowrap text-muted-foreground tabular-nums">{slotClockRange(slot).label}</p>
+            <p className="text-sm whitespace-nowrap text-muted-foreground tabular-nums max-sm:hidden">{time}</p>
             <p className="col-start-3 text-right sm:col-start-auto">
               <PastStatus status={booking.status} />
             </p>

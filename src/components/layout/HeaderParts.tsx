@@ -35,7 +35,7 @@ export function Logo({ className }: { className?: string }) {
 }
 
 // First letters of the first and last words: "Ada Obi" → "AO", "Ada" → "A".
-function initialsOf(name: string): string {
+export function initialsOf(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) return "?";
   const first = words[0][0];

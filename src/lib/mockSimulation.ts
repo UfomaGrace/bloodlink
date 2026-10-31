@@ -26,7 +26,8 @@
 // simulateBookings gives upcoming ones (cancellable), one in a started slot, and past ones.
 // simulateDonorWeek gives the donor's slot screen a week of slots from today (Lagos), one booked
 // by the donor, and three past donations, so the hero card, the donations pill, the day counts and
-// the booked marker all show. Display only, like the rest.
+// the booked marker all show. Display only, like the rest. Both give the same three donations
+// (sampleDonations: 4, 8 and 12 months back), so both screens say "3 donations so far".
 // simulateSlotDetail gives one slot (the id in the URL, run by the viewer's bank) started with
 // bookings to record, not started yet, or with nobody booked.
 
@@ -366,8 +367,41 @@ function sampleBooking(n: number, slot: DonationSlot, status: Booking["status"],
 }
 
 /**
+ * The Lagos date `months` calendar months before `at`, on the same day of the month, or on the
+ * month's last day when it is shorter (31 October less 4 months is 30 June).
+ */
+export function lagosMonthsAgo(at: number, months: number): string {
+  const [year, month, day] = lagosToday(at).split("-").map(Number);
+  const index = year * 12 + (month - 1) - months;
+  const y = Math.floor(index / 12);
+  const m = index - y * 12; // 0–11
+  const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${y}-${pad(m + 1)}-${pad(Math.min(day, lastDay))}`;
+}
+
+/** Months back of the donor's sample donations, most recent first. */
+export const SAMPLE_DONATION_MONTHS_AGO = [4, 8, 12] as const;
+
+/**
+ * The donor's three past donations (ATTENDED), 10:00–12:00 Lagos time 4, 8 and 12 months before
+ * `at`. `ids` are the one-digit booking numbers; each slot is numbered `slotBase` + that digit.
+ */
+function sampleDonations(at: number, donorName: string, ids: readonly [number, number, number], slotBase: number): Booking[] {
+  const banks = [SAMPLE_BANKS[0], SAMPLE_BANKS[1], SAMPLE_BANKS[0]];
+  return SAMPLE_DONATION_MONTHS_AGO.map((months, i) => {
+    const date = lagosMonthsAgo(at, months);
+    const lagos = (time: string) => new Date(`${date}T${time}:00+01:00`).toISOString();
+    const slot = sampleSlot(slotBase + ids[i], banks[i], lagos("10:00"), lagos("12:00"), 8, 8);
+    // Booked a week before the slot, not the 20 days before `at` sampleBooking assumes.
+    return { ...sampleBooking(ids[i], slot, "ATTENDED", donorName, at), createdAt: new Date(Date.parse(slot.startsAt) - 7 * DAY_MS).toISOString() };
+  });
+}
+
+/**
  * A donor's bookings for `state`, with dates from `at` (ms): two upcoming they can cancel, one in
- * a slot that has started (too late to cancel), one cancelled, and two past (attended, no-show).
+ * a slot that has started (too late to cancel), one cancelled, a no-show, and three donations
+ * (sampleDonations).
  */
 export function simulateBookings(state: BookingListSimulation, at: number, donorName: string): Booking[] {
   if (state === "EMPTY") return [];
@@ -378,8 +412,8 @@ export function simulateBookings(state: BookingListSimulation, at: number, donor
     sampleBooking(2, sampleSlot(12, bankB, lagosAt(at, 4, "13:00"), lagosAt(at, 4, "15:00"), 6, 2), "BOOKED", donorName, at),
     sampleBooking(3, sampleSlot(13, bankA, minutes(-30), minutes(90), 8, 5), "BOOKED", donorName, at),
     sampleBooking(4, sampleSlot(14, bankB, lagosAt(at, 2, "10:00"), lagosAt(at, 2, "12:00"), 6, 3), "CANCELLED", donorName, at),
-    sampleBooking(5, sampleSlot(15, bankA, lagosAt(at, -7, "09:00"), lagosAt(at, -7, "11:00"), 10, 9), "ATTENDED", donorName, at),
     sampleBooking(6, sampleSlot(16, bankB, lagosAt(at, -14, "14:00"), lagosAt(at, -14, "16:00"), 6, 6), "NO_SHOW", donorName, at),
+    ...sampleDonations(at, donorName, [5, 7, 8], 10),
   ];
 }
 
@@ -399,7 +433,7 @@ export type DonorWeek = { slots: DonationSlotList; booked: Booking[]; attended: 
  *   today     one slot that started 30 minutes ago (shown under "full or past"; the day has nothing to book)
  *   +1 day    09:00 booked by the donor (the hero's "Tomorrow"), 14:00 with 1 place left, 15:00 full
  *   +2, +4, +5, +6  slots with places left; +3 has none
- * "With your bookings" adds three ATTENDED bookings, 40, 160 and 280 days back.
+ * "With your bookings" adds the three donations (sampleDonations: 4, 8 and 12 months back).
  */
 export function simulateDonorWeek(state: DonorWeekSimulation, at: number, donorName: string): DonorWeek {
   const [bankA, bankB] = SAMPLE_BANKS;
@@ -422,12 +456,10 @@ export function simulateDonorWeek(state: DonorWeekSimulation, at: number, donorN
   const slots = { computedAt, items };
   if (state === "WEEK_NO_BOOKINGS") return { slots, booked: [], attended: [], banks };
 
-  const past = (n: number, daysAgo: number, bank: Organisation) =>
-    sampleBooking(n, sampleSlot(30 + n, bank, lagosAt(at, -daysAgo, "10:00"), lagosAt(at, -daysAgo, "12:00"), 8, 8), "ATTENDED", donorName, at);
   return {
     slots,
     booked: [sampleBooking(7, mine, "BOOKED", donorName, at)],
-    attended: [past(8, 40, bankA), past(9, 160, bankB), past(0, 280, bankA)], // sampleBooking ids take one digit
+    attended: sampleDonations(at, donorName, [8, 9, 0], 30), // sampleBooking ids take one digit
     banks,
   };
 }

@@ -383,6 +383,85 @@ describe("Layout: hospital staff and donors get the white top bar with the nav i
   });
 });
 
+describe("Layout: donor header on phones", () => {
+  const menuButton = () => screen.getByRole("button", { name: "Account menu, Ada Obi" });
+
+  it("the nav is two equal tabs below sm, the current one marked with aria-current", () => {
+    renderAt("/bookings", "DONOR");
+    const nav = within(screen.getByRole("banner")).getByRole("navigation", { name: "Main" });
+    expect(nav.className).toContain("max-sm:border-t");
+    const [slots, bookings] = within(nav).getAllByRole("link");
+    expect(bookings.textContent).toBe("My bookings");
+    expect(bookings.getAttribute("aria-current")).toBe("page");
+    expect(slots.hasAttribute("aria-current")).toBe(false);
+    for (const tab of [slots, bookings]) {
+      expect(tab.className).toContain("max-sm:flex-1");
+      expect(tab.className).toContain("max-sm:min-h-12");
+      expect(tab.parentElement!.className).toContain("max-sm:flex-1");
+    }
+    expect(bookings.className).toContain("shadow-[inset_0_-2px_0_var(--color-primary)]");
+  });
+
+  it("the account menu: the initials in a 44px circle, shown below sm, in place of the user block", () => {
+    renderAt("/slots", "DONOR");
+    const button = menuButton();
+    expect(button.textContent).toBe("AO");
+    expect(button.className).toContain("size-11");
+    expect(button.className).toContain("rounded-full");
+    expect(button.parentElement!.className).toContain("sm:hidden");
+    expect(screen.getByTestId("user-block").parentElement!.className).toContain("max-sm:hidden");
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("opens to the name and role, Account and Sign out, and closes on the button and on Escape", async () => {
+    renderAt("/slots", "DONOR");
+    fireEvent.click(menuButton());
+    expect(menuButton().getAttribute("aria-expanded")).toBe("true");
+    const panel = document.getElementById(menuButton().getAttribute("aria-controls")!)!;
+    expect(panel.textContent).toContain("Ada Obi · Donor");
+    expect(within(panel).getByRole("link", { name: "Account" }).getAttribute("href")).toBe("/account");
+    expect(within(panel).getByRole("button", { name: "Sign out" })).toBeTruthy();
+
+    fireEvent.click(menuButton());
+    expect(menuButton().getAttribute("aria-expanded")).toBe("false");
+    expect(document.getElementById(panel.id)).toBeNull();
+
+    fireEvent.click(menuButton());
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    expect(menuButton().getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(menuButton());
+  });
+
+  it("closes on a tap outside, and on choosing Account", () => {
+    renderAt("/slots", "DONOR");
+    fireEvent.click(menuButton());
+    fireEvent.pointerDown(screen.getByRole("main"));
+    expect(menuButton().getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(menuButton());
+    fireEvent.click(screen.getByRole("link", { name: "Account" }));
+    expect(menuButton().getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("link", { name: "Account" })).toBeNull();
+  });
+
+  it("signs out from the menu", () => {
+    renderAt("/slots", "DONOR");
+    fireEvent.click(menuButton());
+    const panel = document.getElementById(menuButton().getAttribute("aria-controls")!)!;
+    fireEvent.click(within(panel).getByRole("button", { name: "Sign out" }));
+    expect(mocks.signOut).toHaveBeenCalled();
+  });
+
+  it("hospital staff keep their header: no account menu, no phone tabs", () => {
+    renderAt("/availability", "HOSPITAL_STAFF");
+    expect(screen.queryByRole("button", { name: /^Account menu/ })).toBeNull();
+    const nav = within(screen.getByRole("banner")).getByRole("navigation", { name: "Main" });
+    expect(nav.className).not.toContain("max-sm:");
+    for (const link of within(nav).getAllByRole("link")) expect(link.className).not.toContain("max-sm:");
+    expect(screen.getByTestId("user-block").parentElement!.className).not.toContain("max-sm:hidden");
+  });
+});
+
 describe("Layout: the user block links to the account page", () => {
   it.each(["BANK_STAFF", "ADMIN"] as const)("%s: from the staff top bar and the narrow header", (role) => {
     renderAt("/dashboard", role);

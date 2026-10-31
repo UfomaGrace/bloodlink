@@ -21,6 +21,9 @@
 // - Phone width: the nav drops to its own row, and links that don't fit wrap onto another row
 //   (no drawer), so the page never scrolls horizontally. Long names truncate. Below sm the
 //   header scrolls away with the page; from sm it is sticky.
+// - Donors below sm: logo and the account menu (DonorMenu: initials, "Account menu, <name>") on
+//   the bar, and the nav under it as two equal tabs. The user block and Sign out move into the
+//   menu. Hospital staff and the staff shell are unchanged.
 // - Both roots set --header-h (layoutStyles) so the staff sidebar sticks just below the header.
 // - <main> centres the page in a max-w-6xl column with padding. A route wrapped in <FullBleed>
 //   (App.tsx) skips that column for the roles it names, so the page can run a band edge to edge
@@ -46,6 +49,7 @@ import type { Role, User } from "../../api/types";
 import { useAuth } from "../../auth/AuthContext";
 import { useServiceStatus } from "../../hooks/useServiceStatus";
 import { cn } from "../../shared/cn";
+import { DonorMenu } from "./DonorMenu";
 import { BrandStripe, Logo, SignOutButton, UserBlock } from "./HeaderParts";
 import { focusRing, headerHeight } from "./layoutStyles";
 import { navItemsFor } from "./navItems";
@@ -216,6 +220,8 @@ function TopNavHeader({
   className?: string;
 }) {
   const navItems = navItemsFor(role);
+  // Donors on phones: the account menu instead of the user block, and the nav as two equal tabs.
+  const donor = role === "DONOR";
 
   return (
     // Sticky from sm only: on phones the wrapped nav rows would take up the screen for good.
@@ -227,10 +233,16 @@ function TopNavHeader({
 
           {/* On phones this is the last row, full width; from sm it sits between logo and user. */}
           {navItems.length > 0 && (
-            <nav aria-label="Main" className="order-last w-full min-w-0 sm:order-0 sm:w-auto sm:flex-1">
-              <ul className="-mx-1 flex flex-wrap gap-x-1 px-1">
+            <nav
+              aria-label="Main"
+              className={cn(
+                "order-last w-full min-w-0 sm:order-0 sm:w-auto sm:flex-1",
+                donor && "max-sm:-mx-4 max-sm:w-[calc(100%+2rem)] max-sm:border-t max-sm:border-border",
+              )}
+            >
+              <ul className={cn("-mx-1 flex flex-wrap gap-x-1 px-1", donor && "max-sm:m-0 max-sm:gap-0 max-sm:p-0")}>
                 {navItems.map((item) => (
-                  <li key={item.to} className="flex">
+                  <li key={item.to} className={cn("flex", donor && "max-sm:flex-1")}>
                     {/* end: /units must not also light up on /units/new. */}
                     <NavLink
                       to={item.to}
@@ -239,6 +251,7 @@ function TopNavHeader({
                         cn(
                           // From sm the link is as tall as the bar, so the underline sits on its hairline.
                           "inline-flex min-h-11 items-center whitespace-nowrap px-3 text-sm transition-colors sm:min-h-15",
+                          donor && "max-sm:min-h-12 max-sm:flex-1 max-sm:justify-center",
                           isActive
                             ? "font-semibold text-primary shadow-[inset_0_-2px_0_var(--color-primary)]"
                             : "font-medium text-muted-foreground hover:bg-(--color-surface-hover) hover:text-foreground",
@@ -254,10 +267,11 @@ function TopNavHeader({
             </nav>
           )}
 
-          <div className="ml-auto flex min-w-0 items-center gap-4">
+          <div className={cn("ml-auto flex min-w-0 items-center gap-4", donor && "max-sm:hidden")}>
             <UserBlock role={role} user={user} />
             <SignOutButton onClick={onSignOut} />
           </div>
+          {donor && <DonorMenu user={user} onSignOut={onSignOut} className="ml-auto sm:hidden" />}
         </div>
       </div>
     </header>
