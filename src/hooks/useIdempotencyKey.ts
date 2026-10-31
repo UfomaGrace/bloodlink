@@ -1,4 +1,4 @@
-// useIdempotencyKey: one Idempotency-Key per submission, for POST /requests.
+// useIdempotencyKey: one Idempotency-Key per submission, for POST /requests and POST /donation-slots.
 //
 //   const idempotency = useIdempotencyKey();
 //   const res = await api.createRequest(body, idempotency.keyFor(body));

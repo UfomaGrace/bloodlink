@@ -6,44 +6,40 @@
 //   The end is on the same date as the start: a slot past midnight can't be entered here.
 // - The times are turned into instants with Lagos's fixed +01:00 offset (lib/donations
 //   lagosDateTimeToIso; Lagos has no daylight saving). The bank comes from the token.
-// - POST /donation-slots → success panel with the slot the service sent back.
+// - POST /donation-slots → success panel with the slot the service sent back. 201 opened it; 200
+//   (Idempotent-Replayed: true) means the service had this submission already, so we say no
+//   second slot was opened. Both are a success.
+// - POST /donation-slots is idempotent. useIdempotencyKey gives one key per submission:
+//     kept     on every retry of the same body, so a retry can never open a second slot.
+//     replaced after a success, when the user changes the form (the body differs), and
+//              after 422 IDEMPOTENCY_KEY_REUSED.
+// - Timeout or lost connection: we send it again once, with the same key (a safe replay), instead
+//   of guessing. If that is lost too, the alert says trying again is safe, and the key is kept.
 // - 422 VALIDATION_FAILED: details for startsAt / endsAt / capacity go on the start time, end time
 //   and capacity fields; anything else is listed in the FormAlert.
-// - Every other error shows in a FormAlert (role="alert", message, "Reference: …").
-//
-// Why a lost connection is handled the way it is: createDonationSlot takes no Idempotency-Key
-// and the contract says each call opens a new slot. If the first request reached the service and
-// only its answer was lost, sending it again would open a second, duplicate slot. So we never
-// resubmit by ourselves (and submit is disabled while a request is in flight). Instead we read
-// this bank's slots for that date and look for one with the same start and end:
-//   found     → "It was created", with the slot.
-//   not found → "It wasn't created", and the form stays filled in so they can try again.
-//   the read fails too → we say we can't tell, and point to the slot list.
-// A slot with the same times that existed before this attempt would also count as found; that is
-// the same slot as far as donors are concerned, so saying "it exists" is still true.
+// - Every other error (422 IDEMPOTENCY_KEY_REUSED included) shows in a FormAlert (role="alert",
+//   the service's message, "Reference: …").
 
 import { Form, Formik, useFormikContext, type FormikHelpers } from "formik";
 import { CheckCircle2 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Link } from "react-router";
 import * as Yup from "yup";
-import { ApiError, toApiError } from "../api/client";
+import { ApiError, toApiError, type ApiResponse } from "../api/client";
 import { api } from "../api/endpoints";
-import { userOrganisation, type DonationSlot, type DonationSlotCreate, type FieldIssue } from "../api/types";
-import { useAuth } from "../auth/AuthContext";
+import type { DonationSlot, DonationSlotCreate, FieldIssue } from "../api/types";
 import { applyApiError } from "../components/form/applyApiError";
 import { FormAlert } from "../components/form/FormAlert";
 import { FormikField } from "../components/form/FormikField";
+import { useIdempotencyKey } from "../hooks/useIdempotencyKey";
 import { useNow } from "../hooks/useNow";
 import { lagosToday } from "../lib/expiry";
 import {
-  findSlotWithTimes,
   formatLagosDay,
   lagosDateTimeToIso,
   MAX_SLOT_CAPACITY,
   placesLeftLabel,
   slotTimeRangeLabel,
-  slotWhenLabel,
 } from "../lib/donations";
 import { slotCapacity, slotDate, slotEndTime, slotStartTime } from "../lib/validation";
 import { cn } from "../shared/cn";
@@ -74,14 +70,19 @@ function toSlotCreate(values: SlotFormValues): DonationSlotCreate | null {
   const endsAt = lagosDateTimeToIso(values.date, values.endTime);
   const capacity = Number(values.capacity);
   if (!startsAt || !endsAt || !Number.isInteger(capacity)) return null;
+  // Fixed field order: useIdempotencyKey compares bodies as JSON.
   return { startsAt, endsAt, capacity };
 }
 
-/** The outcome shown above the form when it isn't a plain success. */
+/** 200, or the header, means the service had this submission already: nothing new was opened. */
+function isReplay(res: ApiResponse<DonationSlot>): boolean {
+  return res.status === 200 || res.headers.get("Idempotent-Replayed") === "true";
+}
+
+/** The outcome shown above the form when it isn't a success. */
 type SubmitProblem =
   | { kind: "plain"; error: ApiError; issues: FieldIssue[] }
-  | { kind: "notCreated"; error: ApiError; when: string }
-  | { kind: "unknown"; error: ApiError; listPath: string };
+  | { kind: "connection"; error: ApiError };
 
 const focusRing =
   "focus-visible:[outline:var(--focus-ring-width)_solid_var(--color-focus)] focus-visible:outline-offset-(--focus-ring-offset)";
@@ -94,20 +95,18 @@ const secondaryLink = cn(
 );
 
 /** /slots narrowed to one bank and one Lagos date. */
-function slotListPath(bankId: string | undefined, date: string): string {
-  const params = new URLSearchParams({ from: date, to: date });
-  if (bankId) params.set("bankId", bankId);
+function slotListPath(bankId: string, date: string): string {
+  const params = new URLSearchParams({ from: date, to: date, bankId });
   return `/slots?${params.toString()}`;
 }
 
 export default function NewSlotPage() {
-  const { session } = useAuth();
-  const bankId = session ? userOrganisation(session.user)?.id : undefined;
   // For the date picker's earliest day; the schema reads the clock itself on each check.
   const now = useNow(60_000);
-  const [created, setCreated] = useState<{ slot: DonationSlot; afterLostConnection: boolean } | null>(null);
+  const idempotency = useIdempotencyKey();
+  const [created, setCreated] = useState<{ slot: DonationSlot; replayed: boolean } | null>(null);
   const [problem, setProblem] = useState<SubmitProblem | null>(null);
-  const [checking, setChecking] = useState(false);
+  const [resending, setResending] = useState(false);
   const successHeadingRef = useRef<HTMLHeadingElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -131,37 +130,42 @@ export default function NewSlotPage() {
     if (!body || inFlight.current) return;
     inFlight.current = true;
     setProblem(null);
+    // Same body as the last attempt → same key, so this is a safe retry.
+    const key = idempotency.keyFor(body);
 
     try {
-      const res = await api.createDonationSlot(body);
-      setCreated({ slot: res.data, afterLostConnection: false });
+      const res = await sendWithOneRetry(body, key);
+      idempotency.renew();
+      setCreated({ slot: res.data, replayed: isReplay(res) });
     } catch (e) {
       const error = toApiError(e);
-      if (error.isConnectionProblem) await checkAfterLostConnection(error, body, values.date);
+      // Lost twice: it may have arrived. Keep the key; trying again is a replay.
+      if (error.isConnectionProblem) setProblem({ kind: "connection", error });
       else handleRefusal(error, helpers);
     } finally {
+      setResending(false);
       inFlight.current = false;
     }
   }
 
-  // Never resubmit (see the top of this file): read this bank's slots for the date and look.
-  async function checkAfterLostConnection(error: ApiError, body: DonationSlotCreate, date: string) {
-    setChecking(true);
+  /** A timeout or lost connection is sent again once with the same key: the service replays, never doubles. */
+  async function sendWithOneRetry(body: DonationSlotCreate, key: string): Promise<ApiResponse<DonationSlot>> {
     try {
-      if (!bankId) throw new Error("No bank on the session to check against.");
-      const day = lagosToday(Date.parse(body.startsAt));
-      const { data } = await api.listDonationSlots({ bankId, from: day, to: day });
-      const found = findSlotWithTimes(data.items, body.startsAt, body.endsAt);
-      if (found) setCreated({ slot: found, afterLostConnection: true });
-      else setProblem({ kind: "notCreated", error, when: slotWhenLabel(body) });
-    } catch {
-      setProblem({ kind: "unknown", error, listPath: slotListPath(bankId, date) });
-    } finally {
-      setChecking(false);
+      return await api.createDonationSlot(body, key);
+    } catch (e) {
+      if (!toApiError(e).isConnectionProblem) throw e;
+      setResending(true);
+      return await api.createDonationSlot(body, key);
     }
   }
 
   function handleRefusal(error: ApiError, helpers: FormikHelpers<SlotFormValues>) {
+    if (error.code === "IDEMPOTENCY_KEY_REUSED") {
+      // The key was already used with another body. The next submit starts a new one.
+      idempotency.renew();
+      setProblem({ kind: "plain", error, issues: [] });
+      return;
+    }
     if (error.code === "VALIDATION_FAILED") {
       const onForm = new ApiError({
         ...error,
@@ -176,6 +180,7 @@ export default function NewSlotPage() {
   }
 
   function openAnother() {
+    idempotency.renew();
     focusFormNext.current = true;
     setProblem(null);
     setCreated(null);
@@ -188,7 +193,7 @@ export default function NewSlotPage() {
       {created ? (
         <SuccessPanel
           slot={created.slot}
-          afterLostConnection={created.afterLostConnection}
+          replayed={created.replayed}
           headingRef={successHeadingRef}
           onOpenAnother={openAnother}
         />
@@ -197,16 +202,16 @@ export default function NewSlotPage() {
           <p className="mt-2 text-muted-foreground">
             Open a time at your bank that donors can book. Times are Lagos time.
           </p>
-          {/* Always rendered, so the check after a lost connection is announced. */}
+          {/* Always rendered, so the resend after a lost connection is announced. */}
           <p role="status" className="mt-1 min-h-5 text-sm text-muted-foreground">
-            {checking ? "We lost the connection. Checking whether the slot was created…" : ""}
+            {resending ? "We lost the connection. Sending it again with the same details…" : ""}
           </p>
 
           {problem && <ProblemAlert problem={problem} />}
 
           <Formik<SlotFormValues> initialValues={initialValues} validationSchema={slotSchema} onSubmit={handleSubmit}>
             {({ isSubmitting, isValidating }) => {
-              const busy = (isSubmitting && !isValidating) || checking;
+              const busy = (isSubmitting && !isValidating) || resending;
               return (
                 <Form ref={formRef} noValidate className="mt-6 flex flex-col gap-5">
                   <FocusFirstError formRef={formRef} />
@@ -244,8 +249,8 @@ export default function NewSlotPage() {
                     required
                   />
 
-                  {/* Disabled while in flight (a second request could open a second slot). loading sets
-                      aria-disabled and ignores clicks but keeps focus on the button; inFlight also stops Enter. */}
+                  {/* Disabled while in flight, so one click is one submission. loading sets aria-disabled
+                      and ignores clicks but keeps focus on the button; inFlight also stops Enter. */}
                   <Button type="submit" size="lg" loading={busy} className="min-h-11 self-start">
                     {busy ? "Opening slot…" : "Open slot"}
                   </Button>
@@ -260,29 +265,14 @@ export default function NewSlotPage() {
 }
 
 function ProblemAlert({ problem }: { problem: SubmitProblem }) {
-  if (problem.kind === "notCreated") {
+  if (problem.kind === "connection") {
     return (
       <FormAlert
         className="mt-6"
         error={problem.error}
-        title="It wasn't created."
-        message={`We lost the connection before the service answered. Your bank's slots don't show one on ${problem.when}, so it wasn't created. You can try again.`}
+        title="We couldn't confirm the slot was opened."
+        message="We lost the connection twice. Open slot again. It's safe: it won't open a second slot."
       />
-    );
-  }
-
-  if (problem.kind === "unknown") {
-    return (
-      <FormAlert
-        className="mt-6"
-        error={problem.error}
-        title="We can't tell whether it was created."
-        message="We lost the connection, and couldn't check your bank's slots either. Check the slot list before trying again, so you don't open it twice."
-      >
-        <Link to={problem.listPath} className={cn(secondaryLink, "mt-3")}>
-          Check your bank's slots
-        </Link>
-      </FormAlert>
     );
   }
 
@@ -307,12 +297,12 @@ function FocusFirstError({ formRef }: { formRef: RefObject<HTMLFormElement | nul
 
 function SuccessPanel({
   slot,
-  afterLostConnection,
+  replayed,
   headingRef,
   onOpenAnother,
 }: {
   slot: DonationSlot;
-  afterLostConnection: boolean;
+  replayed: boolean;
   headingRef: RefObject<HTMLHeadingElement | null>;
   onOpenAnother: () => void;
 }) {
@@ -335,12 +325,12 @@ function SuccessPanel({
         className={cn("flex items-start gap-2 rounded-sm text-xl font-semibold wrap-break-word", focusRing)}
       >
         <CheckCircle2 aria-hidden="true" className="mt-1 size-5 shrink-0 text-success" />
-        <span className="min-w-0">{afterLostConnection ? "It was created" : "Slot opened"}</span>
+        <span className="min-w-0">Slot opened</span>
       </h2>
       {/* The heading takes focus; this says what it means without needing the heading read twice. */}
       <p role="status" className="mt-2 text-sm">
-        {afterLostConnection
-          ? "We lost the connection, but your bank's slots now show this one, so it was created. We didn't send it again."
+        {replayed
+          ? "This slot had already been opened. No second slot was opened. Donors can book it."
           : "Donors can now book it."}
       </p>
 

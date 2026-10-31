@@ -12,7 +12,6 @@ import {
   canManageSlot,
   canRecordAttendance,
   checkSlotRange,
-  findSlotWithTimes,
   formatLagosDay,
   formatLagosTime,
   hasSlotEnded,
@@ -247,21 +246,12 @@ describe("cancelBookingRefusal and unconfirmedCancelMessage", () => {
   });
 });
 
-describe("lagosDateTimeToIso and findSlotWithTimes", () => {
+describe("lagosDateTimeToIso", () => {
   it("reads the time as Lagos time (+01:00 all year, no daylight saving)", () => {
     expect(lagosDateTimeToIso("2026-10-30", "09:00")).toBe("2026-10-30T08:00:00.000Z");
     expect(lagosDateTimeToIso("2026-07-01", "00:30")).toBe("2026-06-30T23:30:00.000Z");
     expect(lagosDateTimeToIso("2026-10-30", "9:00")).toBeNull();
     expect(lagosDateTimeToIso("30/10/2026", "09:00")).toBeNull();
-  });
-
-  it("finds a slot with the same start and end, whatever offset it is written in", () => {
-    const slots = [
-      slot({ id: "other", startsAt: "2026-10-30T09:00:00+01:00", endsAt: "2026-10-30T11:00:00+01:00" }),
-      slot({ id: "same", startsAt: "2026-10-30T09:00:00+01:00", endsAt: "2026-10-30T10:00:00+01:00" }),
-    ];
-    expect(findSlotWithTimes(slots, "2026-10-30T08:00:00.000Z", "2026-10-30T09:00:00.000Z")?.id).toBe("same");
-    expect(findSlotWithTimes(slots, "2026-10-30T08:00:00.000Z", "2026-10-30T09:30:00.000Z")).toBeUndefined();
   });
 });
 

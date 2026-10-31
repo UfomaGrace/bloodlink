@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-// NewSlotPage: open a slot; 422 on its fields; and after a lost connection, never resubmit but look.
+// NewSlotPage: open a slot with an Idempotency-Key; 422 on its fields; a 200 replay; key reuse;
+// and after a lost connection, one resend with the same key.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
@@ -10,7 +11,7 @@ import { lagosToday } from "../lib/expiry";
 
 const BANK: Organisation = { id: "0d1f6a3e-2b4c-4e5f-8a9b-1c2d3e4f5a6b", name: "Lagos Central Blood Bank", type: "BLOOD_BANK", area: "Ikeja" };
 
-const mocks = vi.hoisted(() => ({ createDonationSlot: vi.fn(), listDonationSlots: vi.fn() }));
+const mocks = vi.hoisted(() => ({ createDonationSlot: vi.fn() }));
 vi.mock("../api/endpoints", () => ({ api: mocks }));
 vi.mock("../auth/AuthContext", () => ({
   useAuth: () => ({
@@ -30,8 +31,17 @@ function slotFrom(body: DonationSlotCreate, id = "slot-new"): DonationSlot {
   return { id, bank: BANK, ...body, booked: 0, placesLeft: body.capacity };
 }
 
-function ok<T>(data: T, status = 200): ApiResponse<T> {
-  return { data, status, requestId: "ref-ok", headers: new Headers() };
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+function ok<T>(data: T, status = 200, headers: Record<string, string> = {}): ApiResponse<T> {
+  return { data, status, requestId: "ref-ok", headers: new Headers(headers) };
+}
+
+const opened = (body: DonationSlotCreate) => Promise.resolve(ok(slotFrom(body), 201));
+
+/** The Idempotency-Key sent on each call so far. */
+function keysSent(): string[] {
+  return mocks.createDonationSlot.mock.calls.map((call) => call[1] as string);
 }
 
 function lost(code: "TIMEOUT" | "NETWORK_ERROR" = "TIMEOUT"): ApiError {
@@ -56,20 +66,23 @@ async function fillAndSubmit(values: { date?: string; start?: string; end?: stri
 
 beforeEach(() => {
   mocks.createDonationSlot.mockReset();
-  mocks.listDonationSlots.mockReset();
 });
 
 afterEach(() => cleanup());
 
 describe("NewSlotPage: open a slot", () => {
-  it("sends Lagos times as instants (+01:00) and shows the slot the service sent back", async () => {
-    mocks.createDonationSlot.mockImplementation((body: DonationSlotCreate) => Promise.resolve(ok(slotFrom(body), 201)));
+  it("sends Lagos times as instants (+01:00) with an Idempotency-Key, and shows the slot the service sent back", async () => {
+    mocks.createDonationSlot.mockImplementation(opened);
     renderPage();
     await fillAndSubmit();
 
     expect(await screen.findByRole("heading", { name: "Slot opened" })).toBeTruthy();
     expect(mocks.createDonationSlot).toHaveBeenCalledTimes(1);
-    expect(mocks.createDonationSlot).toHaveBeenCalledWith({ startsAt: STARTS_AT, endsAt: ENDS_AT, capacity: 10 });
+    expect(mocks.createDonationSlot).toHaveBeenCalledWith(
+      { startsAt: STARTS_AT, endsAt: ENDS_AT, capacity: 10 },
+      expect.stringMatching(UUID),
+    );
+    expect(screen.getByText("Donors can now book it.")).toBeTruthy();
     expect(screen.getByText("09:00–11:00 Lagos time")).toBeTruthy();
     expect(screen.getByText("10 of 10 places left")).toBeTruthy();
     expect(document.activeElement?.id).toBe("slot-created-heading");
@@ -130,58 +143,138 @@ describe("NewSlotPage: open a slot", () => {
   });
 });
 
-describe("NewSlotPage: lost connection (no Idempotency-Key, so never resubmit)", () => {
-  it("timeout, and the bank's slots show one with the same times: 'It was created'", async () => {
-    mocks.createDonationSlot.mockRejectedValue(lost("TIMEOUT"));
-    mocks.listDonationSlots.mockResolvedValue(
-      ok({
-        computedAt: new Date().toISOString(),
-        // Written with the +01:00 offset, as the service may send it: matched as instants.
-        items: [slotFrom({ startsAt: `${DATE}T09:00:00+01:00`, endsAt: `${DATE}T11:00:00+01:00`, capacity: 10 }, "slot-found")],
-      }),
+describe("NewSlotPage: Idempotency-Key", () => {
+  it("200 replay (Idempotent-Replayed: true): shows the slot as opened, and says no second one was", async () => {
+    mocks.createDonationSlot.mockImplementation((body: DonationSlotCreate) =>
+      Promise.resolve(ok(slotFrom(body), 200, { "Idempotent-Replayed": "true" })),
     );
     renderPage();
     await fillAndSubmit();
 
-    expect(await screen.findByRole("heading", { name: "It was created" })).toBeTruthy();
-    expect(screen.getByText(/We didn't send it again/)).toBeTruthy();
-    expect(mocks.createDonationSlot).toHaveBeenCalledTimes(1);
-    expect(mocks.listDonationSlots).toHaveBeenCalledWith({ bankId: BANK.id, from: DATE, to: DATE });
+    expect(await screen.findByRole("heading", { name: "Slot opened" })).toBeTruthy();
+    expect(screen.getByText(/This slot had already been opened\. No second slot was opened\./)).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("lost connection, and no slot with those times: 'It wasn't created', and they can try again", async () => {
-    mocks.createDonationSlot.mockRejectedValueOnce(lost("NETWORK_ERROR"));
-    mocks.listDonationSlots.mockResolvedValue(
-      ok({
-        computedAt: new Date().toISOString(),
-        items: [slotFrom({ startsAt: STARTS_AT, endsAt: new Date(`${DATE}T12:00:00+01:00`).toISOString(), capacity: 10 })],
+  it("422 IDEMPOTENCY_KEY_REUSED: shows the service's message and Reference; the next submit has a new key", async () => {
+    mocks.createDonationSlot.mockRejectedValueOnce(
+      new ApiError({
+        status: 422,
+        code: "IDEMPOTENCY_KEY_REUSED",
+        message: "This key was already used with different details. Nothing was opened.",
+        requestId: "ref-key",
       }),
     );
     renderPage();
     await fillAndSubmit();
 
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toMatch(/It wasn't created\./);
-    expect(alert.textContent).toMatch(/You can try again/);
-    expect(alert.textContent).toMatch(/Reference: ref-lost/);
-    expect(mocks.createDonationSlot).toHaveBeenCalledTimes(1);
+    expect(alert.textContent).toMatch(/This key was already used with different details\. Nothing was opened\./);
+    expect(alert.textContent).toMatch(/Reference: ref-key/);
 
-    // The form is still filled in; trying again is their choice.
-    mocks.createDonationSlot.mockImplementation((body: DonationSlotCreate) => Promise.resolve(ok(slotFrom(body), 201)));
+    mocks.createDonationSlot.mockImplementation(opened);
     await userEvent.click(screen.getByRole("button", { name: "Open slot" }));
     expect(await screen.findByRole("heading", { name: "Slot opened" })).toBeTruthy();
-    expect(mocks.createDonationSlot).toHaveBeenCalledTimes(2);
+    const [first, second] = keysSent();
+    expect(second).toMatch(UUID);
+    expect(second).not.toBe(first);
   });
 
-  it("timeout, and the check fails too: says it can't tell, and links to the bank's slots that day", async () => {
-    mocks.createDonationSlot.mockRejectedValue(lost("TIMEOUT"));
-    mocks.listDonationSlots.mockRejectedValue(lost("NETWORK_ERROR"));
+  it("a changed form gets a new key; 'Open another slot' starts a new submission too", async () => {
+    mocks.createDonationSlot.mockRejectedValueOnce(
+      new ApiError({ status: 500, code: "INTERNAL_ERROR", message: "Something went wrong.", requestId: "ref-500" }),
+    );
+    mocks.createDonationSlot.mockImplementation(opened);
+    renderPage();
+    await fillAndSubmit();
+    expect((await screen.findByRole("alert")).textContent).toMatch(/Reference: ref-500/);
+
+    await fillAndSubmit({ capacity: "12" }); // edited: a different body
+    expect(await screen.findByRole("heading", { name: "Slot opened" })).toBeTruthy();
+
+    await userEvent.click(screen.getByRole("button", { name: "Open another slot" }));
+    await fillAndSubmit({ capacity: "12" }); // same body as the last success, but a new submission
+    await waitFor(() => expect(mocks.createDonationSlot).toHaveBeenCalledTimes(3));
+
+    const keys = keysSent();
+    expect(new Set(keys).size).toBe(3);
+  });
+
+  it("a 500 keeps the key: sending the same form again is a replay", async () => {
+    mocks.createDonationSlot.mockRejectedValueOnce(
+      new ApiError({ status: 500, code: "INTERNAL_ERROR", message: "Something went wrong.", requestId: "ref-500" }),
+    );
+    mocks.createDonationSlot.mockImplementation(opened);
+    renderPage();
+    await fillAndSubmit();
+    await screen.findByRole("alert");
+
+    await userEvent.click(screen.getByRole("button", { name: "Open slot" }));
+    expect(await screen.findByRole("heading", { name: "Slot opened" })).toBeTruthy();
+    const [first, second] = keysSent();
+    expect(second).toBe(first);
+  });
+});
+
+describe("NewSlotPage: lost connection (resend once, same key)", () => {
+  it("timeout: sends again once with the same key, and shows the slot", async () => {
+    mocks.createDonationSlot.mockRejectedValueOnce(lost("TIMEOUT"));
+    mocks.createDonationSlot.mockImplementation((body: DonationSlotCreate) =>
+      Promise.resolve(ok(slotFrom(body), 200, { "Idempotent-Replayed": "true" })),
+    );
     renderPage();
     await fillAndSubmit();
 
-    expect((await screen.findByRole("alert")).textContent).toMatch(/We can't tell whether it was created\./);
-    const link = screen.getByRole("link", { name: "Check your bank's slots" });
-    expect(link.getAttribute("href")).toBe(`/slots?from=${DATE}&to=${DATE}&bankId=${BANK.id}`);
-    expect(mocks.createDonationSlot).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("heading", { name: "Slot opened" })).toBeTruthy();
+    expect(screen.getByText(/No second slot was opened/)).toBeTruthy();
+    expect(mocks.createDonationSlot).toHaveBeenCalledTimes(2);
+    const [first, second] = keysSent();
+    expect(first).toMatch(UUID);
+    expect(second).toBe(first);
+    expect(mocks.createDonationSlot.mock.calls[1][0]).toEqual(mocks.createDonationSlot.mock.calls[0][0]);
+  });
+
+  it("announces the resend while it is in flight", async () => {
+    let answer: (value: ApiResponse<DonationSlot>) => void = () => {};
+    mocks.createDonationSlot.mockRejectedValueOnce(lost("NETWORK_ERROR"));
+    mocks.createDonationSlot.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    renderPage();
+    await fillAndSubmit();
+
+    expect(await screen.findByText("We lost the connection. Sending it again with the same details…")).toBeTruthy();
+    answer(ok(slotFrom({ startsAt: STARTS_AT, endsAt: ENDS_AT, capacity: 10 }), 201));
+    expect(await screen.findByRole("heading", { name: "Slot opened" })).toBeTruthy();
+  });
+
+  it("lost twice: says trying again is safe, keeps the form and the key", async () => {
+    mocks.createDonationSlot.mockRejectedValueOnce(lost("TIMEOUT"));
+    mocks.createDonationSlot.mockRejectedValueOnce(lost("NETWORK_ERROR"));
+    renderPage();
+    await fillAndSubmit();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/We couldn't confirm the slot was opened\./);
+    expect(alert.textContent).toMatch(/It's safe: it won't open a second slot\./);
+    expect(alert.textContent).toMatch(/Reference: ref-lost/);
+    expect(mocks.createDonationSlot).toHaveBeenCalledTimes(2); // one resend, no more
+
+    mocks.createDonationSlot.mockImplementation(opened);
+    await userEvent.click(screen.getByRole("button", { name: "Open slot" }));
+    expect(await screen.findByRole("heading", { name: "Slot opened" })).toBeTruthy();
+    expect(new Set(keysSent()).size).toBe(1);
+  });
+
+  it("a refusal on the resend is shown like any other", async () => {
+    mocks.createDonationSlot.mockRejectedValueOnce(lost("TIMEOUT"));
+    mocks.createDonationSlot.mockRejectedValueOnce(
+      new ApiError({ status: 403, code: "FORBIDDEN", message: "Only bank staff can open slots.", requestId: "ref-403" }),
+    );
+    renderPage();
+    await fillAndSubmit();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/Only bank staff can open slots\./);
+    expect(alert.textContent).toMatch(/Reference: ref-403/);
+    expect(mocks.createDonationSlot).toHaveBeenCalledTimes(2);
   });
 });

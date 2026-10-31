@@ -210,17 +210,6 @@ export function lagosDateTimeToIso(date: string, time: string): string | null {
   return new Date(`${date}T${time}:00+01:00`).toISOString();
 }
 
-/** The slot with exactly these start and end instants (compared as instants, so the offset each is written in doesn't matter). */
-export function findSlotWithTimes(
-  slots: readonly DonationSlot[],
-  startsAt: string,
-  endsAt: string,
-): DonationSlot | undefined {
-  const start = Date.parse(startsAt);
-  const end = Date.parse(endsAt);
-  return slots.find((slot) => Date.parse(slot.startsAt) === start && Date.parse(slot.endsAt) === end);
-}
-
 /** "7 of 10 places used" (booked counts BOOKED and ATTENDED, as the contract defines it). */
 export function placesUsedLabel(slot: Pick<DonationSlot, "booked" | "capacity">): string {
   return `${slot.booked} of ${slot.capacity} ${slot.capacity === 1 ? "place" : "places"} used`;

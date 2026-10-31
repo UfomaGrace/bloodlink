@@ -122,9 +122,9 @@ export const api = {
   listDonationSlots: (query: DonationSlotQuery, signal?: AbortSignal) =>
     apiFetch<DonationSlotList>('/donation-slots', { query, signal }),
 
-  /** POST /donation-slots. Bank staff only. Not idempotent: each call opens a new slot. */
-  createDonationSlot: (body: DonationSlotCreate) =>
-    apiFetch<DonationSlot>('/donation-slots', { method: 'POST', body, mockPreferCode: 201 }),
+  /** POST /donation-slots. Bank staff only. Safe to repeat with the same Idempotency-Key: 201 first time, 200 on a replay. */
+  createDonationSlot: (body: DonationSlotCreate, idempotencyKey: string) =>
+    apiFetch<DonationSlot>('/donation-slots', { method: 'POST', body, idempotencyKey, mockPreferCode: 201 }),
 
   /** POST /donation-slots/{id}/bookings. Donors only; 409 SLOT_FULL, ALREADY_BOOKED (a double tap) or SLOT_CLOSED. */
   bookDonationSlot: (slotId: string) =>
