@@ -13,7 +13,7 @@
 //   hold clock stops. It adds no history entry: the history shows only what the service recorded.
 // - `now`-free and side-effect free, so the rollback is easy to test.
 
-import type { ApiError } from "../api/client";
+import { ApiError } from "../api/client";
 import type { BloodRequest, Reservation } from "../api/types";
 
 /** Ids of the requests shown as cancelled while the service hasn't confirmed it. */
@@ -59,4 +59,20 @@ export function cancelOutcome(error: ApiError | null): "confirmed" | "await-relo
 /** After a refusal, reload when our copy may be out of date: it closed, or isn't ours to see. */
 export function reloadsAfterRefusal(error: ApiError): boolean {
   return error.status === 409 || error.status === 403 || error.status === 404;
+}
+
+/** Our words for 409 REQUEST_CLOSED (it closed before ours arrived, or a second cancellation). */
+export const REQUEST_CLOSED_MESSAGE =
+  "This request is already closed (fulfilled, declined, cancelled, or its hold lapsed or a unit expired), so it can't be cancelled. Nothing changed. We've loaded its latest state.";
+
+/** A cancellation refusal with our own message for 409 REQUEST_CLOSED; anything else unchanged. */
+export function cancelRefusalError(error: ApiError): ApiError {
+  if (error.status !== 409 || error.code !== "REQUEST_CLOSED") return error;
+  return new ApiError({
+    status: error.status,
+    code: error.code,
+    message: REQUEST_CLOSED_MESSAGE,
+    requestId: error.requestId,
+    details: error.details,
+  });
 }

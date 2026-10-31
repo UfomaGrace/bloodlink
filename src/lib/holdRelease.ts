@@ -196,7 +196,7 @@ export function heldUnitsHeading(count: number): string {
 
 /** What the contract does not say. Labelled as our reading; it is on the contract questions list. */
 export const LEFTOVER_UNITS_NOTE =
-  "Our reading of the contract: the service then approves this emergency as a normal approval would and picks its units itself, so it may not take these exact units. Any it doesn't take go back to stock.";
+  "Our reading of the contract: the service then approves this emergency as a normal approval would and picks its units itself, so it may not take these exact units. Any it doesn't take go back to stock, or are marked expired if past their expiry date.";
 
 export function releasedMessage(emergency: BloodRequest, routineReference: string): string {
   return `Hold released. ${emergency.reference} is approved and holds its units. ${routineReference} is back to pending.`;

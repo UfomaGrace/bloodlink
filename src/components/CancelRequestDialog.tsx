@@ -59,7 +59,7 @@ export function CancelRequestDialog({ open, onOpenChange, request, reopened, onC
       open={open}
       onOpenChange={onOpenChange}
       title={request ? `Cancel request ${request.reference}?` : "Cancel this request?"}
-      description={`${request?.bank.name ?? "The bank"} will see your reason. Any units held for it go back to stock.`}
+      description={`${request?.bank.name ?? "The bank"} will see your reason. Any units held for it go back to stock, or are marked expired if past their expiry date.`}
     >
       <Formik<CancelValues>
         // A reopened dialog starts again from what was typed, with the service's errors showing.

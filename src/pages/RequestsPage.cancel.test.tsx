@@ -6,6 +6,7 @@ import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, type ApiResponse } from "../api/client";
 import type { BloodRequest, BloodRequestPage, Session } from "../api/types";
+import { REQUEST_CLOSED_MESSAGE } from "../lib/optimisticCancel";
 import { ToastProvider } from "../shared/ui/toast";
 
 const HOSPITAL = { id: "hospital-1", name: "Yaba General Hospital", type: "HOSPITAL", area: "Yaba" } as const;
@@ -113,8 +114,9 @@ describe("RequestsPage optimistic cancel", () => {
     await waitFor(() => expect(within(tableRow("REQ-1")).getByText("Pending")).toBeTruthy());
     expect(within(tableRow("REQ-1")).queryByText("Cancelled")).toBeNull();
     const pageAlert = screen.getAllByRole("alert").find((el) => el.textContent?.includes("Reference: ref-409"));
-    expect(pageAlert?.textContent).toContain("This request is already closed.");
+    expect(pageAlert?.textContent).toContain(REQUEST_CLOSED_MESSAGE);
     expect(await screen.findByText("Cancellation of REQ-1 undone")).toBeTruthy();
+    expect(screen.getByText(`${REQUEST_CLOSED_MESSAGE} Reference: ref-409`)).toBeTruthy();
     await waitFor(() => expect(mocks.listRequests).toHaveBeenCalledTimes(2)); // quiet reload after 409
     expect(screen.getByRole("table")).toBeTruthy(); // rows stayed up
   });

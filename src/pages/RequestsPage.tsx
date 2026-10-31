@@ -7,7 +7,7 @@
 // - Hospital staff get a Cancel button on each of their own open requests (canCancel). Same dialog
 //   and outcomes as RequestDetailPage: the row reads CANCELLED at once; a refusal puts it back and
 //   reports it here and in an error Toast with "Reload" (and reloads the list after 409 / 403 /
-//   404); a 422 reopens the dialog with the reason as typed; a lost connection keeps CANCELLED
+//   404; 409 REQUEST_CLOSED gets our own message, cancelRefusalError); a 422 reopens the dialog with the reason as typed; a lost connection keeps CANCELLED
 //   until a reload answers, then says what the request shows. Reloads here are quiet: rows stay up.
 // - Mock only: MockControls can show every row in a simulated state, so Cancel can be tried.
 // - The service decides what each user sees: a hospital its own requests, a bank the ones
@@ -48,6 +48,7 @@ import {
 import { simulateRequest, type SimulatedState } from "../lib/mockSimulation";
 import {
   cancelOutcome,
+  cancelRefusalError,
   endCancel,
   NO_CANCELS,
   reloadsAfterRefusal,
@@ -218,9 +219,12 @@ export default function RequestsPage() {
         rows: { ...(prev.over === requests.data ? prev.rows : {}), [request.id]: res.data },
         over: requests.data,
       }));
-      setNotice({ tone: "success", message: `Request ${request.reference} cancelled. Any units held for it are back in stock.` });
+      setNotice({
+        tone: "success",
+        message: `Request ${request.reference} cancelled. Any units held for it are back in stock, or are marked expired if past their expiry date.`,
+      });
     } catch (e) {
-      const error = toApiError(e);
+      const error = cancelRefusalError(toApiError(e));
       if (cancelOutcome(error) === "await-reload") {
         // We can't tell whether it happened: CANCELLED stays until the reload answers. No retry.
         setSimulated(null);

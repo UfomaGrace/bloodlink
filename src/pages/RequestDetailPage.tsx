@@ -30,7 +30,7 @@
 //   POST /requests/{id}/cancellation. The dialog closes and the request shows CANCELLED at once.
 //     Confirmed → the service's copy and a success message.
 //     Refused (409 REQUEST_CLOSED, 403, 404, anything else) → the request is put back as it was,
-//       the service's message shows here and in an error Toast with "Reload", and after 409 / 403 /
+//       the message (our own for REQUEST_CLOSED: cancelRefusalError, else the service's) shows here and in an error Toast with "Reload", and after 409 / 403 /
 //       404 the request is reloaded. In the mock the simulated state stays, so the rollback shows.
 //     422 → put back, and the dialog reopens with the reason as typed and the field errors.
 //     Lost connection → CANCELLED stays until the reload answers, then we say what it shows.
@@ -136,6 +136,7 @@ import {
 } from "../lib/mockSimulation";
 import {
   cancelOutcome,
+  cancelRefusalError,
   endCancel,
   NO_CANCELS,
   reloadsAfterRefusal,
@@ -328,9 +329,12 @@ function RequestDetail({ requestId }: { requestId: string }) {
     try {
       const res = await api.cancelRequest(requestId, { reason });
       setCancels((overlay) => endCancel(overlay, requestId));
-      succeeded(res.data, "Request cancelled. Any units held for it are back in stock.");
+      succeeded(
+        res.data,
+        "Request cancelled. Any units held for it are back in stock, or are marked expired if past their expiry date.",
+      );
     } catch (e) {
-      const error = toApiError(e);
+      const error = cancelRefusalError(toApiError(e));
       if (cancelOutcome(error) === "await-reload") {
         checkAfterLostConnection(true); // CANCELLED stays until the reload answers
         return;
@@ -691,7 +695,7 @@ function RequestDetail({ requestId }: { requestId: string }) {
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             No longer need this blood? Cancel the request. {request.bank.name} will see your reason, and any units
-            held for it go back to stock.
+            held for it go back to stock, or are marked expired if past their expiry date.
           </p>
           <div className="mt-4">
             <Button
@@ -852,17 +856,17 @@ const OUTCOMES: Partial<Record<RequestState, Outcome>> = {
   DECLINED: { title: "Reason for declining", body: "The bank did not give a reason.", border: "border-l-(--color-danger)" },
   LAPSED: {
     title: "Hold lapsed",
-    body: "The hold ended before the units were issued. They have returned to stock.",
+    body: "The hold ended before the units were issued. They have returned to stock. The hospital can make a new request.",
     border: "border-l-(--color-warning)",
   },
   UNIT_EXPIRED: {
     title: "A reserved unit expired",
-    body: "A reserved unit passed its expiry date before it was issued, so this request was closed. Expired blood is never issued. Send a new request if blood is still needed.",
+    body: "A reserved unit passed its expiry date before it was issued, so this request was closed. Expired blood is never issued. The hospital can make a new request.",
     border: "border-l-(--color-danger)",
   },
   CANCELLED: {
     title: "Request cancelled",
-    body: "The hospital cancelled this request. Any units held for it have returned to stock.",
+    body: "The hospital cancelled this request. Any units held for it have returned to stock, or are marked expired if past their expiry date.",
     border: "border-l-(--color-border-input)",
   },
   FULFILLED: {

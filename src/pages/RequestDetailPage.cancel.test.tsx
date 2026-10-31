@@ -6,6 +6,7 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, type ApiResponse } from "../api/client";
 import type { BloodRequest, Session } from "../api/types";
+import { REQUEST_CLOSED_MESSAGE } from "../lib/optimisticCancel";
 import { ToastProvider } from "../shared/ui/toast";
 
 const HOSPITAL = { id: "hospital-1", name: "Yaba General Hospital", type: "HOSPITAL", area: "Yaba" } as const;
@@ -120,12 +121,13 @@ describe("RequestDetailPage optimistic cancel", () => {
       }),
     );
 
-    // Rolled back: the request reads as before, with the service's message in the page and a toast.
+    // Rolled back: the request reads as before, with our REQUEST_CLOSED message in the page and a toast.
     await waitFor(() => expect(screen.queryByRole("heading", { name: "Request cancelled" })).toBeNull());
     expect(screen.getAllByText("Approved").length).toBeGreaterThan(0);
     const pageAlert = screen.getAllByRole("alert").find((el) => el.textContent?.includes("Reference: ref-409"));
-    expect(pageAlert?.textContent).toContain("This request is already closed.");
+    expect(pageAlert?.textContent).toContain(REQUEST_CLOSED_MESSAGE);
     expect(await screen.findByText("Cancellation undone")).toBeTruthy();
+    expect(screen.getByText(`${REQUEST_CLOSED_MESSAGE} Reference: ref-409`)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
     await waitFor(() => expect(mocks.getRequest).toHaveBeenCalledTimes(2));
   });
@@ -160,7 +162,9 @@ describe("RequestDetailPage optimistic cancel", () => {
     const call = await cancelWithReason(user, "Patient discharged.");
     call.resolve(ok({ ...approvedRequest(), state: "CANCELLED", reservations: [] }));
 
-    const status = await screen.findByText("Request cancelled. Any units held for it are back in stock.");
+    const status = await screen.findByText(
+      "Request cancelled. Any units held for it are back in stock, or are marked expired if past their expiry date.",
+    );
     expect(status.closest("[role=status]")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Request cancelled" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Cancel request" })).toBeNull();

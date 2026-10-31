@@ -4,6 +4,7 @@ import type { BloodRequest, Reservation } from "../api/types";
 import {
   asCancelled,
   cancelOutcome,
+  cancelRefusalError,
   endCancel,
   NO_CANCELS,
   reloadsAfterRefusal,
@@ -107,5 +108,21 @@ describe("reloadsAfterRefusal", () => {
     expect(reloadsAfterRefusal(apiError(404, "NOT_FOUND"))).toBe(true);
     expect(reloadsAfterRefusal(apiError(422, "VALIDATION_FAILED"))).toBe(false);
     expect(reloadsAfterRefusal(apiError(500, "INTERNAL_ERROR"))).toBe(false);
+  });
+});
+
+describe("cancelRefusalError", () => {
+  it("gives 409 REQUEST_CLOSED our own message, keeping the code and Reference", () => {
+    const shown = cancelRefusalError(apiError(409, "REQUEST_CLOSED"));
+    expect(shown.message).toMatch(/^This request is already closed .* so it can't be cancelled\. Nothing changed\./);
+    expect(shown.code).toBe("REQUEST_CLOSED");
+    expect(shown.status).toBe(409);
+    expect(shown.requestId).toBe(apiError(409, "REQUEST_CLOSED").requestId);
+  });
+
+  it("leaves every other refusal as the service sent it", () => {
+    for (const error of [apiError(403, "FORBIDDEN"), apiError(404, "NOT_FOUND"), apiError(500, "INTERNAL_ERROR")]) {
+      expect(cancelRefusalError(error)).toBe(error);
+    }
   });
 });
