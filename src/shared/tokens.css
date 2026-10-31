@@ -7,9 +7,10 @@
 
   Values follow the approved BloodLink palette. Contrast (WCAG 2.2 AA):
   on --color-surface (#ffffff): text 14.8:1, muted text 4.9:1, primary 5.5:1,
-  danger 6.6:1, success 7.1:1, warning 7.1:1, info 6.7:1, input border 4.9:1.
+  danger 6.6:1, success 7.1:1, warning 7.1:1, info 7.9:1, input border 4.9:1.
   On --color-bg (#f5f8f8): muted text 4.6:1, primary / focus ring 5.1:1.
-  Status text on its own *-subtle tint stays at 5.7:1 or more.
+  On --color-secondary (#17302f): white 14.0:1, muted on-secondary 8.5:1.
+  Status text on its own *-subtle tint stays at 5.7:1 or more (info 7.0:1).
   --color-border (#cbd5d7) is 1.5:1, so it is for decorative dividers only;
   form controls use --color-border-input.
   If you change a colour, re-check it (4.5:1 for text, 3:1 for borders and focus).
@@ -37,12 +38,12 @@
   --color-on-primary: #ffffff;
 
   /* Structure: the app header */
-  --color-secondary: #243746;
+  --color-secondary: #17302f;
   --color-on-secondary: #ffffff;
-  --color-on-secondary-muted: color-mix(in srgb, var(--color-on-secondary) 75%, var(--color-secondary)); /* 7.7:1 */
+  --color-on-secondary-muted: color-mix(in srgb, var(--color-on-secondary) 75%, var(--color-secondary)); /* 8.5:1 */
   --color-secondary-hover: color-mix(in srgb, var(--color-on-secondary) 10%, var(--color-secondary));
 
-  /* Brand accent: crimson, used sparingly (logo, active nav, emergency urgency) */
+  /* Brand accent: crimson, used sparingly (logo, emergency urgency) */
   --color-accent: #b9384d;
 
   /* Urgent urgency dot. 3.6:1 on surface: fine for a graphic (3:1), too light for text. */
@@ -62,7 +63,7 @@
   --color-on-warning: #ffffff;
   --color-warning-subtle: color-mix(in srgb, var(--color-warning) 8%, var(--color-surface));
 
-  --color-info: #1d4ed8;
+  --color-info: #35565e;
   --color-on-info: #ffffff;
   --color-info-subtle: color-mix(in srgb, var(--color-info) 8%, var(--color-surface));
 
@@ -75,6 +76,6 @@
   --radius-sm: 4px;
   --radius-md: 8px;
 
-  /* Type: system fonts by default. Each team swaps in its own font here. */
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Type: Jost (loaded in index.html, weights 400/500/600), system fonts as fallback. */
+  --font-sans: Jost, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }

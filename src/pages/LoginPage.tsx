@@ -4,11 +4,16 @@
 // - POST /sessions → signIn(session) → home. Already signed in → straight to home.
 // - VALIDATION_FAILED puts each detail on its field; any other failure shows a
 //   role="alert" box with the service's message and "Reference: <requestId>".
-// - The background is decorative only: aria-hidden, no pointer events, no animation.
+// - Layout: a dark panel (brand, headline, who it's for) beside the form from lg up; below lg
+//   the panel is a top band with the logo and headline only. Its network background is
+//   decorative only: aria-hidden, no pointer events, no animation.
 // - Mock only (IS_MOCK): "Sign in as" swaps the mock session's role and organisation,
 //   because Prism always returns the same bank staff example.
+// - Real service only (!IS_MOCK): a role="status" pill says whether the service is awake
+//   (it never blocks the form), and "Try a demo" pills fill the form with a seeded login
+//   (no submit), clear any error and move focus to Sign in.
 
-import { Form, Formik, useFormikContext, type FormikHelpers } from "formik";
+import { Form, Formik, useFormikContext, type FormikHelpers, type FormikProps } from "formik";
 import { ArrowRight, Droplet, Eye, EyeOff } from "lucide-react";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { Navigate, useNavigate } from "react-router";
@@ -18,12 +23,26 @@ import { api } from "../api/endpoints";
 import type { Organisation, Role, Session, User } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { FormikField } from "../components/form/FormikField";
+import { useServiceStatus, type ServiceStatus } from "../hooks/useServiceStatus";
 import { Button } from "../shared/ui/button";
 import { Card, CardBody, CardHeader } from "../shared/ui/card";
 import { FormField } from "../shared/ui/form-field";
 import { Select, type SelectOption } from "../shared/ui/select";
 
 type LoginValues = { email: string; password: string };
+
+// Seeded on the real service (see README). Demonstration accounts only.
+const DEMO_ACCOUNTS = [
+  { label: "Bank staff", email: "staff@lagos-central.bank.demo", password: "Demo-Password-1" },
+  { label: "Hospital staff", email: "staff@yaba.hospital.demo", password: "Demo-Password-1" },
+] as const satisfies readonly ({ label: string } & LoginValues)[];
+
+// Who BloodLink is for, along the foot of the dark panel (lg and up).
+const AUDIENCES = [
+  { role: "Hospitals", action: "Request units" },
+  { role: "Blood banks", action: "Manage stock" },
+  { role: "Donors", action: "Book a slot" },
+] as const;
 
 type MockRole = Role;
 
@@ -83,7 +102,10 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [mockRole, setMockRole] = useState<MockRole>("BANK_STAFF");
   const formRef = useRef<HTMLFormElement>(null);
+  const formikRef = useRef<FormikProps<LoginValues>>(null);
+  const submitRef = useRef<HTMLButtonElement>(null);
   const alertRef = useRef<HTMLDivElement>(null);
+  const serviceStatus = useServiceStatus();
 
   // The submit button is disabled during the request, which drops keyboard focus.
   // Put it on the alert so keyboard and screen reader users land on the problem.
@@ -120,150 +142,189 @@ export default function LoginPage() {
     }
   }
 
+  /** Fill the form with a demo login without submitting; focus Sign in so Enter signs in. */
+  function fillDemoAccount({ email, password }: LoginValues) {
+    setFormError(null);
+    void formikRef.current?.setValues({ email, password });
+    submitRef.current?.focus();
+  }
+
   return (
-    <div className="relative isolate flex min-h-dvh flex-col overflow-hidden bg-background text-foreground [--font-sans:Jost,system-ui,-apple-system,'Segoe_UI',Roboto,sans-serif] font-sans">
-      {/* React 19 hoists these into <head>. Falls back to system fonts offline. */}
-      <link rel="preconnect" href="https://fonts.googleapis.com" />
-      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-      <link
-        rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600&display=swap"
-        precedence="default"
-      />
+    <div className="grid min-h-dvh bg-background text-foreground font-sans lg:grid-cols-2">
+      <section
+        aria-labelledby="hero-heading"
+        className="relative isolate flex min-w-0 flex-col gap-6 overflow-hidden bg-secondary px-4 py-6 text-on-secondary [--color-focus:var(--color-on-secondary)] sm:px-8 sm:py-8 lg:justify-between lg:px-10 lg:py-10"
+      >
+        <NetworkBackground />
 
-      <CareBackground />
-
-      <header className="mx-auto flex w-full max-w-6xl items-center px-4 pt-6 sm:px-8 sm:pt-8">
-        <p className="flex items-center gap-2 text-lg font-semibold tracking-wide text-primary">
-          <Droplet aria-hidden="true" className="size-5 fill-brand-accent text-brand-accent" />
+        <p className="flex w-full max-w-xl items-center gap-2 text-base font-semibold tracking-wide">
+          <Droplet aria-hidden="true" className="size-4 fill-brand-accent text-brand-accent" />
           BLOODLINK
         </p>
-      </header>
 
-      <main className="mx-auto grid w-full max-w-6xl flex-1 items-center gap-10 px-4 py-10 sm:px-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,30rem)] lg:gap-16 lg:py-16">
-        <section aria-labelledby="hero-heading" className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-primary sm:text-sm">
+        <div className="w-full max-w-xl">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-on-secondary-muted">
             Blood supply coordination
           </p>
+          {/* 14ch plus the nowrap span: it can only break as "Every unit, / accounted for." */}
           <h1
             id="hero-heading"
-            className="mt-4 text-4xl font-semibold leading-[1.05] tracking-tight wrap-break-word sm:text-5xl lg:text-6xl"
+            className="mt-3 max-w-[14ch] text-3xl font-semibold leading-[1.05] tracking-tight sm:text-4xl xl:text-5xl"
           >
-            Every unit, accounted for.
+            Every unit, <span className="whitespace-nowrap">accounted for.</span>
           </h1>
-          <p className="mt-5 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
-            Track blood stock and requests between banks and hospitals from one clear workspace.
+          <p className="mt-4 hidden text-base leading-relaxed text-on-secondary-muted lg:block xl:text-lg">
+            Stock and requests between Lagos banks and hospitals, in one place.
           </p>
-        </section>
+        </div>
 
-        {/* Card always draws an image placeholder when no image is given; hide it here. */}
-        <Card className="w-full shadow-sm [&>div:first-child]:hidden">
-          <div className="p-2 sm:p-4">
-            <CardHeader className="mb-6">
-              <h2 className="text-3xl font-semibold tracking-tight">Welcome back</h2>
-              <p className="mt-3 text-base text-muted-foreground">
-                Sign in to manage blood stock and requests.
-              </p>
-            </CardHeader>
+        <ul className="hidden w-full max-w-xl grid-cols-3 divide-x divide-on-secondary/20 border-t border-on-secondary/20 lg:grid">
+          {AUDIENCES.map(({ role, action }) => (
+            <li key={role} className="px-3 pt-4 first:pl-0 last:pr-0">
+              <p className="text-sm font-semibold">{role}</p>
+              <p className="mt-1 text-sm text-on-secondary-muted">{action}</p>
+            </li>
+          ))}
+        </ul>
+      </section>
 
-            <CardBody>
-              {notice && !formError && (
-                <div
-                  role="status"
-                  className="mb-5 rounded-md border border-input border-l-4 border-l-primary bg-surface p-3 text-sm"
-                >
-                  {notice}
-                </div>
-              )}
-
-              {formError && (
-                <div
-                  ref={alertRef}
-                  role="alert"
-                  tabIndex={-1}
-                  className="mb-5 rounded-md border border-error border-l-4 bg-surface p-3 text-sm focus-visible:[outline:var(--focus-ring-width)_solid_var(--color-focus)] focus-visible:outline-offset-(--focus-ring-offset)"
-                >
-                  <p className="font-medium text-error">
-                    <span aria-hidden="true">! </span>
-                    {formError.message}
-                  </p>
-                  <p className="mt-1 break-all text-muted-foreground">Reference: {formError.requestId}</p>
-                </div>
-              )}
-
-              <Formik<LoginValues> initialValues={initialValues} validationSchema={loginSchema} onSubmit={handleSubmit}>
-                {({ isSubmitting, isValidating }) => {
-                  // Only disable while the request is in flight, not during the quick
-                  // validation pass, so a failed validation doesn't steal focus.
-                  const busy = isSubmitting && !isValidating;
-                  return (
-                    <Form ref={formRef} noValidate className="flex flex-col gap-5">
-                      <FocusFirstError formRef={formRef} />
-
-                      <FormikField name="email" label="Email" type="email" autoComplete="email" required />
-
-                      <FormikField
-                        name="password"
-                        label="Password"
-                        type={showPassword ? "text" : "password"}
-                        autoComplete="current-password"
-                        required
-                        endAdornment={
-                          <Button
-                            variant="ghost"
-                            iconOnly
-                            aria-label="Show password"
-                            aria-pressed={showPassword}
-                            onClick={() => setShowPassword((v) => !v)}
-                          >
-                            {showPassword ? (
-                              <EyeOff aria-hidden="true" className="size-5" />
-                            ) : (
-                              <Eye aria-hidden="true" className="size-5" />
-                            )}
-                          </Button>
-                        }
-                      />
-
-                      {IS_MOCK && (
-                        <div className="rounded-md border border-dashed border-warning bg-surface p-3">
-                          <p className="mb-2 text-sm font-semibold text-foreground">
-                            Mock server only — simulated sign-in
-                          </p>
-                          <FormField label="Sign in as" hint="Not shown when connected to the real service.">
-                            {(field) => (
-                              <Select
-                                {...field}
-                                className="min-h-11"
-                                options={[...MOCK_ROLE_OPTIONS]}
-                                value={mockRole}
-                                onValueChange={(next) => {
-                                  if (isMockRole(next)) setMockRole(next);
-                                }}
-                              />
-                            )}
-                          </FormField>
-                        </div>
-                      )}
-
-                      <Button type="submit" size="lg" disabled={busy} aria-busy={busy || undefined} className="mt-1 w-full">
-                        {busy ? (
-                          "Signing in…"
-                        ) : (
-                          <>
-                            Sign in
-                            <ArrowRight aria-hidden="true" className="size-4" />
-                          </>
-                        )}
-                      </Button>
-                    </Form>
-                  );
-                }}
-              </Formik>
-            </CardBody>
-
+      <main className="relative flex min-w-0 flex-col items-center justify-center gap-6 px-4 py-10 sm:px-8 lg:py-16">
+        {!IS_MOCK && (
+          <div className="flex w-full max-w-104 justify-end lg:absolute lg:top-6 lg:right-8 lg:w-auto">
+            <ServiceStatusPill status={serviceStatus} />
           </div>
-        </Card>
+        )}
+
+        <div className="flex w-full max-w-104 min-w-0 flex-col gap-4">
+          {/* Card always draws an image placeholder when no image is given; hide it here. */}
+          <Card className="w-full shadow-sm [&>div:first-child]:hidden">
+            <div className="p-2 sm:p-3">
+              <CardHeader className="mb-5">
+                <h2 className="text-2xl font-semibold tracking-tight">Sign in</h2>
+              </CardHeader>
+
+              <CardBody>
+                {notice && !formError && (
+                  <div
+                    role="status"
+                    className="mb-4 rounded-md border border-input border-l-4 border-l-primary bg-surface p-3 text-sm"
+                  >
+                    {notice}
+                  </div>
+                )}
+
+                {formError && (
+                  <div
+                    ref={alertRef}
+                    role="alert"
+                    tabIndex={-1}
+                    className="mb-4 rounded-md border border-error border-l-4 bg-surface p-3 text-sm focus-visible:[outline:var(--focus-ring-width)_solid_var(--color-focus)] focus-visible:outline-offset-(--focus-ring-offset)"
+                  >
+                    <p className="font-medium text-error">
+                      <span aria-hidden="true">! </span>
+                      {formError.message}
+                    </p>
+                    <p className="mt-1 break-all text-muted-foreground">Reference: {formError.requestId}</p>
+                  </div>
+                )}
+
+                <Formik<LoginValues>
+                  innerRef={formikRef}
+                  initialValues={initialValues}
+                  validationSchema={loginSchema}
+                  onSubmit={handleSubmit}
+                >
+                  {({ isSubmitting, isValidating }) => {
+                    // Only disable while the request is in flight, not during the quick
+                    // validation pass, so a failed validation doesn't steal focus.
+                    const busy = isSubmitting && !isValidating;
+                    return (
+                      <Form ref={formRef} noValidate className="flex flex-col gap-4">
+                        <FocusFirstError formRef={formRef} />
+
+                        <FormikField name="email" label="Email" type="email" autoComplete="email" required />
+
+                        <FormikField
+                          name="password"
+                          label="Password"
+                          type={showPassword ? "text" : "password"}
+                          autoComplete="current-password"
+                          required
+                          endAdornment={
+                            <Button
+                              variant="ghost"
+                              iconOnly
+                              aria-label="Show password"
+                              aria-pressed={showPassword}
+                              onClick={() => setShowPassword((v) => !v)}
+                            >
+                              {showPassword ? (
+                                <EyeOff aria-hidden="true" className="size-5" />
+                              ) : (
+                                <Eye aria-hidden="true" className="size-5" />
+                              )}
+                            </Button>
+                          }
+                        />
+
+                        {IS_MOCK && (
+                          <div className="rounded-md border border-dashed border-warning bg-surface p-3">
+                            <p className="mb-2 text-sm font-semibold text-foreground">
+                              Mock server only — simulated sign-in
+                            </p>
+                            <FormField label="Sign in as" hint="Not shown when connected to the real service.">
+                              {(field) => (
+                                <Select
+                                  {...field}
+                                  className="min-h-11"
+                                  options={[...MOCK_ROLE_OPTIONS]}
+                                  value={mockRole}
+                                  onValueChange={(next) => {
+                                    if (isMockRole(next)) setMockRole(next);
+                                  }}
+                                />
+                              )}
+                            </FormField>
+                          </div>
+                        )}
+
+                        <Button ref={submitRef} type="submit" size="lg" disabled={busy} aria-busy={busy || undefined} className="mt-1 w-full">
+                          {busy ? (
+                            "Signing in…"
+                          ) : (
+                            <>
+                              Sign in
+                              <ArrowRight aria-hidden="true" className="size-4" />
+                            </>
+                          )}
+                        </Button>
+                      </Form>
+                    );
+                  }}
+                </Formik>
+              </CardBody>
+
+            </div>
+          </Card>
+
+          {!IS_MOCK && (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <p className="text-muted-foreground">Try a demo:</p>
+              {DEMO_ACCOUNTS.map((account) => (
+                <Button
+                  key={account.email}
+                  variant="secondary"
+                  size="sm"
+                  className="min-h-11 rounded-full px-4"
+                  aria-label={`${account.label} (${account.email})`}
+                  onClick={() => fillDemoAccount(account)}
+                >
+                  {account.label}
+                </Button>
+              ))}
+            </div>
+          )}
+        </div>
       </main>
     </div>
   );
@@ -285,57 +346,140 @@ function FocusFirstError({ formRef }: { formRef: RefObject<HTMLFormElement | nul
   return null;
 }
 
+const STATUS_TEXT: Record<ServiceStatus, string> = {
+  checking: "Waking the service…",
+  ready: "Service ready",
+  failed: "Service unreachable. Sign-in may fail.",
+};
+
+const STATUS_TONE: Record<ServiceStatus, string> = {
+  checking: "border-border text-muted-foreground",
+  ready: "border-success text-success",
+  failed: "border-warning text-warning",
+};
+
 /**
- * Calm, decorative care-themed background: soft shapes, faint plus signs,
- * a blood-drop outline and a heartbeat line. Static, muted, low opacity.
+ * Real service only. The role="status" wrapper stays mounted (empty when there is nothing to say)
+ * and only its content changes, so screen readers announce each change. Never blocks the form.
  */
-function CareBackground() {
+function ServiceStatusPill({ status }: { status: ServiceStatus | null }) {
   return (
-    <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+    <div role="status">
+      {status && (
+        <p
+          className={`inline-flex items-center gap-2 rounded-full border bg-surface px-3 py-1 text-sm ${STATUS_TONE[status]}`}
+        >
+          {status === "checking" && (
+            <span
+              aria-hidden="true"
+              className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none"
+            />
+          )}
+          {STATUS_TEXT[status]}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// Network of banks and hospitals: a dot at every line vertex inside the 640×800 viewBox, except
+// the red drop at (520,140). Vertices on two lines get the larger dot. The second drop sits off
+// the lines near the right edge, clear of the panel's text and columns.
+const NETWORK_LINES = [
+  "M-20 40 L40 60 L200 130 L360 50 L520 140 L620 60 L680 90",
+  "M-20 300 L90 280 L260 240 L430 300 L600 250 L680 280",
+  "M-20 470 L40 460 L210 420 L380 480 L560 430 L680 460",
+  "M-20 640 L120 620 L300 600 L470 660 L610 580 L680 600",
+  "M40 60 L90 280 L40 460 L120 620",
+  "M200 130 L260 240 L210 420 L300 600",
+  "M520 140 L600 250 L560 430 L610 580",
+  "M430 300 L380 480 L470 660",
+];
+
+const NETWORK_NODES: readonly (readonly [x: number, y: number, r: number])[] = [
+  [40, 60, 5], [200, 130, 5], [360, 50, 4], [620, 60, 4],
+  [90, 280, 5], [260, 240, 5], [430, 300, 5], [600, 250, 5],
+  [40, 460, 5], [210, 420, 5], [380, 480, 5], [560, 430, 5],
+  [120, 620, 5], [300, 600, 5], [470, 660, 5], [610, 580, 5],
+];
+
+const NETWORK_DROPS: readonly (readonly [x: number, y: number])[] = [
+  [520, 140],
+  [590, 520],
+];
+
+// lucide's Droplet (the logo), on its 24×24 grid.
+const DROP_PATH =
+  "M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z";
+
+/**
+ * Decorative network behind the dark panel: faint lines and dots, two red drops. Static.
+ * Held at its 640×800 size in the panel's top-right corner, so it never grows on wide screens;
+ * smaller panels crop it from the left and bottom. Lines and dots fade out along the left and
+ * bottom edges so the network never ends in a hard line; the drops are not faded.
+ */
+function NetworkBackground() {
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute top-0 right-0 -z-10 h-full max-h-200 w-full max-w-160 overflow-hidden"
+    >
       <svg
         className="h-full w-full"
-        viewBox="0 0 1440 900"
-        preserveAspectRatio="xMidYMid slice"
+        viewBox="0 0 640 800"
+        preserveAspectRatio="xMaxYMin slice"
         xmlns="http://www.w3.org/2000/svg"
         focusable="false"
       >
         <defs>
-          <pattern id="bl-plus" width="56" height="56" patternUnits="userSpaceOnUse">
-            <path d="M28 22v12M22 28h12" className="stroke-muted-foreground" strokeWidth="1.5" strokeLinecap="round" />
-          </pattern>
-          {/* Mask luminance, not a visible colour: white keeps the pattern, transparent hides it. */}
-          <radialGradient id="bl-fade" cx="30%" cy="35%" r="70%">
-            <stop offset="0%" stopColor="white" stopOpacity="1" />
-            <stop offset="100%" stopColor="white" stopOpacity="0" />
-          </radialGradient>
-          <mask id="bl-plus-mask">
-            <rect width="1440" height="900" fill="url(#bl-fade)" />
+          {/* Mask luminance, not visible colours: black hides, white shows. */}
+          <linearGradient id="bl-net-fade-left" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="160" y2="0">
+            <stop offset="0" stopColor="black" />
+            <stop offset="1" stopColor="white" />
+          </linearGradient>
+          <linearGradient id="bl-net-fade-bottom" gradientUnits="userSpaceOnUse" x1="0" y1="640" x2="0" y2="800">
+            <stop offset="0" stopColor="white" />
+            <stop offset="1" stopColor="black" />
+          </linearGradient>
+          <mask id="bl-net-mask-left" maskUnits="userSpaceOnUse" x="-20" y="0" width="700" height="800">
+            <rect x="-20" y="0" width="700" height="800" fill="url(#bl-net-fade-left)" />
+          </mask>
+          <mask id="bl-net-mask-bottom" maskUnits="userSpaceOnUse" x="-20" y="0" width="700" height="800">
+            <rect x="-20" y="0" width="700" height="800" fill="url(#bl-net-fade-bottom)" />
           </mask>
         </defs>
 
-        {/* Faint plus signs, fading out toward the card */}
-        <rect width="1440" height="900" fill="url(#bl-plus)" opacity="0.12" mask="url(#bl-plus-mask)" />
+        {/* Nested so the two fades multiply: the bottom-left corner fades on both edges. */}
+        <g mask="url(#bl-net-mask-left)">
+          <g mask="url(#bl-net-mask-bottom)">
+            <g fill="none" className="stroke-on-secondary" strokeWidth="1.2" strokeOpacity="0.10">
+              {NETWORK_LINES.map((d) => (
+                <path key={d} d={d} />
+              ))}
+            </g>
 
-        {/* Blood-drop outline */}
-        <path
-          d="M0 -150 C 50 -75 100 -25 100 38 A 100 100 0 0 1 -100 38 C -100 -25 -50 -75 0 -150 Z"
-          transform="translate(1290 330)"
-          fill="none"
-          className="stroke-brand-accent"
-          strokeWidth="2"
-          opacity="0.12"
-        />
+            <g className="fill-on-secondary" fillOpacity="0.22">
+              {NETWORK_NODES.map(([x, y, r]) => (
+                <circle key={`${x},${y}`} cx={x} cy={y} r={r} />
+              ))}
+            </g>
+          </g>
+        </g>
 
-        {/* Heartbeat line */}
-        <path
-          d="M0 780 H460 L490 780 L512 742 L540 830 L570 690 L598 800 L616 780 H900 L922 780 L938 760 L956 800 L972 780 H1440"
-          fill="none"
-          className="stroke-brand-accent"
-          strokeWidth="2"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-          opacity="0.14"
-        />
+        {NETWORK_DROPS.map(([x, y]) => (
+          <g key={`${x},${y}`} transform={`translate(${x} ${y})`}>
+            <path
+              d={DROP_PATH}
+              transform="scale(2.2) translate(-12 -12)"
+              fill="none"
+              className="stroke-brand-accent"
+              strokeWidth="1.5"
+              opacity="0.6"
+              vectorEffect="non-scaling-stroke"
+            />
+            <path d={DROP_PATH} transform="translate(-12 -12)" className="fill-brand-accent" />
+          </g>
+        ))}
       </svg>
     </div>
   );

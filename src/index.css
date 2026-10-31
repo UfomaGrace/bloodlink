@@ -10,6 +10,8 @@
   --color-primary: var(--color-primary);
   --color-brand-accent: var(--color-accent);
   --color-secondary: var(--color-secondary);
+  --color-on-secondary: var(--color-on-secondary);
+  --color-on-secondary-muted: var(--color-on-secondary-muted);
   --color-background: var(--color-bg);
   --color-surface: var(--color-surface);
   --color-foreground: var(--color-text);
