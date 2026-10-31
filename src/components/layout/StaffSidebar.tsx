@@ -1,6 +1,7 @@
 // StaffSidebar: the dark nav column of the staff shell (bank staff and the administrator, lg and up).
 //
-// - Nav only. It sits under the white top bar (sticky at top-15, the rest of the viewport tall);
+// - Nav only. It sits under the white top bar (sticky at --header-h from layoutStyles, the bar
+//   plus its brand stripe, and the rest of the viewport tall);
 //   the logo, organisation, user and Sign out are all in StaffTopBar.
 // - Groups from navGroupsFor(): the first has no label; the others have a small uppercase label
 //   that also names their list.
@@ -73,7 +74,7 @@ export function StaffSidebar({
       data-testid="staff-sidebar"
       data-collapsed={collapsed || undefined}
       className={cn(
-        "sticky top-15 z-20 h-[calc(100dvh-60px)] shrink-0 flex-col self-start bg-secondary text-on-secondary",
+        "sticky top-(--header-h) z-20 h-[calc(100dvh-var(--header-h))] shrink-0 flex-col self-start bg-secondary text-on-secondary",
         "transition-[width] duration-150 ease-out motion-reduce:transition-none",
         collapsed ? "w-17" : "w-60",
         onDarkFocus,

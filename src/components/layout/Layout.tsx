@@ -6,7 +6,9 @@
 //   aria-current="page" on the active link; we style it from the isActive flag.
 // - "Skip to main content" is the first thing a keyboard user reaches. It moves focus into
 //   <main> (tabIndex={-1}) so the next Tab starts inside the page, not back in the header.
-// - Hospital staff and donors: the dark top bar with the nav in it (TopNavHeader).
+// - Hospital staff and donors: the white top bar with the nav in it (TopNavHeader). It looks like
+//   StaffTopBar: same height, brand stripe, logo, user block and Sign out (from HeaderParts).
+//   The active link is primary text with a 2px primary underline on the bar's grey hairline.
 // - Bank staff and the administrator, lg and up: the staff shell, a full-width sticky white top
 //   bar (StaffTopBar) over a dark nav sidebar (StaffSidebar) and the content column.
 //   Below lg they get TopNavHeader.
@@ -16,13 +18,14 @@
 //   the top bar keeps saying "Connected" (the hook itself clears "ready" after a few seconds).
 // - The sidebar collapses to icons from the top bar's toggle; the choice is kept in
 //   localStorage (default expanded; storage that throws is ignored).
-// - Phone width: the nav drops to its own row and scrolls sideways inside itself,
-//   so the page never scrolls horizontally. Long names truncate.
+// - Phone width: the nav drops to its own row, and links that don't fit wrap onto another row
+//   (no drawer), so the page never scrolls horizontally. Long names truncate. Below sm the
+//   header scrolls away with the page; from sm it is sticky.
+// - Both roots set --header-h (layoutStyles) so the staff sidebar sticks just below the header.
 //
 // RequireRole: wrap a route's page so other roles get a friendly message instead.
 // HomeRedirect: "/" sends each role to its starting page.
 
-import { Droplet } from "lucide-react";
 import { useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react";
 import { Link, Navigate, NavLink, Outlet } from "react-router";
 import { IS_MOCK } from "../../api/client";
@@ -30,8 +33,8 @@ import type { Role, User } from "../../api/types";
 import { useAuth } from "../../auth/AuthContext";
 import { useServiceStatus } from "../../hooks/useServiceStatus";
 import { cn } from "../../shared/cn";
-import { Button } from "../../shared/ui/button";
-import { focusRing, onDarkFocus, ROLE_LABELS } from "./layoutStyles";
+import { BrandStripe, Logo, SignOutButton, UserBlock } from "./HeaderParts";
+import { focusRing, headerHeight } from "./layoutStyles";
 import { navItemsFor } from "./navItems";
 import { StaffSidebar } from "./StaffSidebar";
 import { StaffTopBar } from "./StaffTopBar";
@@ -79,7 +82,7 @@ export default function Layout() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col bg-background font-sans text-foreground">
+    <div className={cn("flex min-h-dvh flex-col bg-background font-sans text-foreground", headerHeight)}>
       <SkipLink onClick={skipToMain} />
       <TopNavHeader role={role} user={user} onSignOut={() => signOut()} />
       <PageMain mainRef={mainRef} />
@@ -116,7 +119,7 @@ function StaffShell({
   }
 
   return (
-    <div className="flex min-h-dvh flex-col bg-background font-sans text-foreground">
+    <div className={cn("flex min-h-dvh flex-col bg-background font-sans text-foreground", headerHeight)}>
       <SkipLink onClick={onSkip} />
       <TopNavHeader role={role} user={user} onSignOut={onSignOut} className="lg:hidden" />
       <StaffTopBar
@@ -168,67 +171,49 @@ function TopNavHeader({
   onSignOut: () => void;
   className?: string;
 }) {
-  const subtitle = user.organisation?.name ?? ROLE_LABELS[role];
   const navItems = navItemsFor(role);
 
   return (
-    <header className={cn("bg-secondary text-(--color-on-secondary)", onDarkFocus, className)}>
-      <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2 sm:px-8">
-        <Link
-          to="/"
-          className={cn(
-            "flex min-h-11 shrink-0 items-center gap-2 rounded-sm text-lg font-semibold tracking-tight",
-            focusRing,
+    // Sticky from sm only: on phones the wrapped nav rows would take up the screen for good.
+    <header className={cn("flex flex-col bg-surface text-foreground sm:sticky sm:top-0 sm:z-30", className)}>
+      <BrandStripe />
+      <div className="border-b border-border">
+        <div className="mx-auto flex min-h-15 w-full max-w-6xl flex-wrap items-center gap-x-6 px-4 sm:px-8">
+          <Logo />
+
+          {/* On phones this is the last row, full width; from sm it sits between logo and user. */}
+          {navItems.length > 0 && (
+            <nav aria-label="Main" className="order-last w-full min-w-0 sm:order-0 sm:w-auto sm:flex-1">
+              <ul className="-mx-1 flex flex-wrap gap-x-1 px-1">
+                {navItems.map((item) => (
+                  <li key={item.to} className="flex">
+                    {/* end: /units must not also light up on /units/new. */}
+                    <NavLink
+                      to={item.to}
+                      end
+                      className={({ isActive }) =>
+                        cn(
+                          // From sm the link is as tall as the bar, so the underline sits on its hairline.
+                          "inline-flex min-h-11 items-center whitespace-nowrap px-3 text-sm transition-colors sm:min-h-15",
+                          isActive
+                            ? "font-semibold text-primary shadow-[inset_0_-2px_0_var(--color-primary)]"
+                            : "font-medium text-muted-foreground hover:bg-(--color-surface-hover) hover:text-foreground",
+                          focusRing,
+                        )
+                      }
+                    >
+                      {item.label}
+                    </NavLink>
+                  </li>
+                ))}
+              </ul>
+            </nav>
           )}
-        >
-          <Droplet aria-hidden="true" className="size-5 fill-brand-accent text-brand-accent" />
-          BloodLink
-        </Link>
 
-        {/* On phones this is the last row, full width; from sm it sits between logo and user. */}
-        {navItems.length > 0 && (
-          <nav aria-label="Main" className="order-last w-full min-w-0 sm:order-0 sm:w-auto sm:flex-1">
-            {/* p-1 keeps the focus ring from being clipped by the scroll container. */}
-            <ul className="-mx-1 flex gap-1 overflow-x-auto p-1">
-              {navItems.map((item) => (
-                <li key={item.to} className="shrink-0">
-                  {/* end: /units must not also light up on /units/new. */}
-                  <NavLink
-                    to={item.to}
-                    end
-                    className={({ isActive }) =>
-                      cn(
-                        // Active: white text on a lifted background, with a white underline.
-                        "inline-flex min-h-11 items-center whitespace-nowrap rounded-t-md border-b-2 px-3 text-sm font-medium transition-colors",
-                        isActive
-                          ? "border-(--color-on-secondary) bg-(--color-secondary-hover) text-(--color-on-secondary)"
-                          : "border-transparent text-(--color-on-secondary-muted) hover:bg-(--color-secondary-hover) hover:text-(--color-on-secondary)",
-                        focusRing,
-                      )
-                    }
-                  >
-                    {item.label}
-                  </NavLink>
-                </li>
-              ))}
-            </ul>
-          </nav>
-        )}
-
-        <div className="ml-auto flex min-w-0 items-center gap-3">
-          <p className="min-w-0 text-right text-sm leading-tight">
-            <span className="block truncate font-medium">{user.displayName}</span>
-            <span className="block truncate text-(--color-on-secondary-muted)">{subtitle}</span>
-          </p>
-          {/* RequireAuth sees the cleared session and redirects to /login. */}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="min-h-11 shrink-0 border border-(--color-on-secondary-muted) text-(--color-on-secondary) hover:bg-(--color-secondary-hover)"
-            onClick={onSignOut}
-          >
-            Sign out
-          </Button>
+          <div className="ml-auto flex min-w-0 items-center gap-4">
+            <UserBlock role={role} user={user} />
+            <SignOutButton onClick={onSignOut} />
+          </div>
         </div>
       </div>
     </header>

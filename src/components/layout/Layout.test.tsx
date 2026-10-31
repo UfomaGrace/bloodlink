@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Layout: staff shell for bank staff and the administrator (full-width top bar with the organisation
-// chip and compact status, collapsible nav sidebar), the old top bar for hospital staff and donors,
-// aria-current on the active route, skip link first.
+// chip and compact status, collapsible nav sidebar), the same white top bar with the nav in it for
+// hospital staff and donors, the brand stripe on both, aria-current on the active route, skip link first.
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -52,6 +52,7 @@ vi.mock("../../auth/AuthContext", () => ({
 }));
 
 const { default: Layout, SIDEBAR_COLLAPSED_KEY } = await import("./Layout");
+const { headerHeight } = await import("./layoutStyles");
 
 function tree(path: string) {
   return (
@@ -303,7 +304,7 @@ describe("Layout: staff shell order", () => {
     ]);
   });
 
-  it("keeps the old top bar for narrow screens, and the skip link first", () => {
+  it("keeps the nav top bar for narrow screens, and the skip link first", () => {
     renderAt("/dashboard", "BANK_STAFF");
     const narrow = screen.getAllByRole("banner").find((el) => el.className.includes("lg:hidden"));
     expect(narrow).toBeTruthy();
@@ -314,7 +315,9 @@ describe("Layout: staff shell order", () => {
   });
 });
 
-describe("Layout: hospital staff and donors keep the old top bar", () => {
+describe("Layout: hospital staff and donors get the white top bar with the nav in it", () => {
+  const banner = () => screen.getByRole("banner");
+
   it.each([
     ["HOSPITAL_STAFF", ["Find blood", "Requests"]],
     ["DONOR", ["Donation slots", "My bookings"]],
@@ -325,7 +328,13 @@ describe("Layout: hospital staff and donors keep the old top bar", () => {
     const banners = screen.getAllByRole("banner");
     expect(banners).toHaveLength(1);
     expect(banners[0].className).not.toContain("lg:hidden");
+    expect(banners[0].className).toContain("bg-surface");
+    // Static on phones, so wrapped nav rows scroll away; sticky from sm.
+    expect(banners[0].classList.contains("sm:sticky")).toBe(true);
+    expect(banners[0].classList.contains("sticky")).toBe(false);
+    expect(banners[0].className).not.toContain("bg-secondary");
 
+    expect(within(banners[0]).getByRole("link", { name: "BloodLink" })).toBeTruthy();
     const nav = within(banners[0]).getByRole("navigation", { name: "Main" });
     expect(within(nav).getAllByRole("link").map((link) => link.textContent)).toEqual(links);
     expect(screen.queryByRole("status")).toBeNull();
@@ -333,9 +342,66 @@ describe("Layout: hospital staff and donors keep the old top bar", () => {
     expect(mocks.useServiceStatus).not.toHaveBeenCalled();
   });
 
-  it("marks the active route with aria-current", () => {
+  it("marks the active route with aria-current and the primary underline", () => {
     renderAt("/slots", "DONOR");
-    expect(screen.getByRole("link", { name: "Donation slots" }).getAttribute("aria-current")).toBe("page");
-    expect(screen.getByRole("link", { name: "My bookings" }).hasAttribute("aria-current")).toBe(false);
+    const active = screen.getByRole("link", { name: "Donation slots" });
+    const other = screen.getByRole("link", { name: "My bookings" });
+
+    expect(active.getAttribute("aria-current")).toBe("page");
+    expect(active.className).toContain("text-primary");
+    expect(active.className).toContain("font-semibold");
+    expect(active.className).toContain("shadow-[inset_0_-2px_0_var(--color-primary)]");
+    expect(active.className).toContain("min-h-11");
+
+    expect(other.hasAttribute("aria-current")).toBe(false);
+    expect(other.className).toContain("text-muted-foreground");
+    expect(other.className).not.toContain("shadow-[inset");
+  });
+
+  it("donors see their initials, name and role label only", () => {
+    renderAt("/slots", "DONOR");
+    const user = within(banner()).getByTestId("user-block");
+    expect(within(user).getByText("AO").getAttribute("aria-hidden")).toBe("true");
+    expect(within(user).getByText("Ada Obi")).toBeTruthy();
+    expect(within(user).getByText("Donor")).toBeTruthy();
+  });
+
+  it("hospital staff see their role label and hospital, truncated", () => {
+    renderAt("/availability", "HOSPITAL_STAFF");
+    const user = within(banner()).getByTestId("user-block");
+    const subtitle = within(user).getByText("Hospital staff · Ikeja General Hospital");
+    expect(subtitle.className).toContain("truncate");
+  });
+
+  it("signs out with the quiet text button", () => {
+    renderAt("/availability", "HOSPITAL_STAFF");
+    const button = within(banner()).getByRole("button", { name: "Sign out" });
+    expect(button.className).toContain("underline");
+    fireEvent.click(button);
+    expect(mocks.signOut).toHaveBeenCalled();
+  });
+});
+
+describe("Layout: brand stripe", () => {
+  it.each(["HOSPITAL_STAFF", "DONOR"] as const)("%s: decorative stripe at the top of the header", (role) => {
+    renderAt("/requests", role);
+    const stripe = within(screen.getByRole("banner")).getByTestId("brand-stripe");
+    expect(stripe.getAttribute("aria-hidden")).toBe("true");
+    expect(stripe.className).toContain("bg-primary");
+    expect(screen.getByRole("banner").firstElementChild).toBe(stripe);
+  });
+
+  it("both staff headers have it, and the sidebar sticks below the header height", () => {
+    renderAt("/dashboard", "BANK_STAFF");
+    for (const header of screen.getAllByRole("banner")) {
+      const stripe = within(header).getByTestId("brand-stripe");
+      expect(stripe.getAttribute("aria-hidden")).toBe("true");
+      expect(header.firstElementChild).toBe(stripe);
+    }
+    expect(sidebar().className).toContain("top-(--header-h)");
+    expect(sidebar().className).toContain("h-[calc(100dvh-var(--header-h))]");
+    // 60px bar + 3px stripe, set once on the layout root.
+    expect(headerHeight).toBe("[--header-h:63px]");
+    expect(sidebar().closest(`[class~="${headerHeight}"]`)).toBeTruthy();
   });
 });
