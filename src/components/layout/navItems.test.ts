@@ -1,7 +1,7 @@
-// navItems: each role's links in order, groups, and the top bar's page title.
+// navItems: each role's links in order, and the staff sidebar's groups.
 import { describe, expect, it } from "vitest";
 import type { Role } from "../../api/types";
-import { navGroupsFor, navItemsFor, pageTitleFor } from "./navItems";
+import { navGroupsFor, navItemsFor } from "./navItems";
 
 const labels = (role: Role) => navItemsFor(role).map((item) => item.label);
 
@@ -15,31 +15,19 @@ describe("navItemsFor", () => {
 });
 
 describe("navGroupsFor", () => {
-  it("groups the links without reordering them", () => {
-    const groups = navGroupsFor("BANK_STAFF").map(({ group, items }) => [group, items.map((item) => item.label)]);
-    expect(groups).toEqual([
-      ["Overview", ["Dashboard"]],
-      ["Requests", ["Requests"]],
-      ["Inventory", ["Units", "Record unit"]],
-      ["Donations", ["Donation slots", "New slot"]],
+  const groups = (role: Role) =>
+    navGroupsFor(role).map(({ group, labelled, items }) => [group, labelled, items.map((item) => item.label)]);
+
+  it("puts Overview and Requests in one unlabelled first group, without reordering", () => {
+    expect(groups("BANK_STAFF")).toEqual([
+      ["Overview", false, ["Dashboard", "Requests"]],
+      ["Inventory", true, ["Units", "Record unit"]],
+      ["Donations", true, ["Donation slots", "New slot"]],
     ]);
-  });
-});
-
-describe("pageTitleFor", () => {
-  it("uses the nav label on a nav route", () => {
-    expect(pageTitleFor("/units", "BANK_STAFF")).toEqual({ label: "Units" });
-    expect(pageTitleFor("/units/new", "BANK_STAFF")).toEqual({ label: "Record unit" });
-  });
-
-  it("gives a sub-route its parent and page name", () => {
-    const title = pageTitleFor("/requests/abc", "ADMIN");
-    expect(title?.label).toBe("Request details");
-    expect(title?.parent?.to).toBe("/requests");
-    expect(pageTitleFor("/slots/abc", "BANK_STAFF")?.parent?.label).toBe("Donation slots");
-  });
-
-  it("has nothing for an unknown path", () => {
-    expect(pageTitleFor("/nowhere", "BANK_STAFF")).toBeNull();
+    expect(groups("ADMIN")).toEqual([
+      ["Overview", false, ["Dashboard", "Find blood", "Requests"]],
+      ["Inventory", true, ["Units"]],
+      ["Donations", true, ["Donation slots"]],
+    ]);
   });
 });

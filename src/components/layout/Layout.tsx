@@ -7,11 +7,15 @@
 // - "Skip to main content" is the first thing a keyboard user reaches. It moves focus into
 //   <main> (tabIndex={-1}) so the next Tab starts inside the page, not back in the header.
 // - Hospital staff and donors: the dark top bar with the nav in it (TopNavHeader).
-// - Bank staff and the administrator, lg and up: the staff shell, a sticky dark top bar
-//   (StaffTopBar) and a sidebar (StaffSidebar) framing the page. Below lg they get TopNavHeader.
+// - Bank staff and the administrator, lg and up: the staff shell, a full-width sticky white top
+//   bar (StaffTopBar) over a dark nav sidebar (StaffSidebar) and the content column.
+//   Below lg they get TopNavHeader.
 //   Both are rendered and CSS shows one; display:none keeps the other out of the
 //   accessibility tree, so there is only ever one "Main" nav. The service status check runs
-//   once, in StaffShell, which stays mounted across routes.
+//   once, in StaffShell, which stays mounted across routes. Once the service has answered,
+//   the top bar keeps saying "Connected" (the hook itself clears "ready" after a few seconds).
+// - The sidebar collapses to icons from the top bar's toggle; the choice is kept in
+//   localStorage (default expanded; storage that throws is ignored).
 // - Phone width: the nav drops to its own row and scrolls sideways inside itself,
 //   so the page never scrolls horizontally. Long names truncate.
 //
@@ -19,7 +23,7 @@
 // HomeRedirect: "/" sends each role to its starting page.
 
 import { Droplet } from "lucide-react";
-import { useRef, type MouseEvent, type ReactNode, type RefObject } from "react";
+import { useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react";
 import { Link, Navigate, NavLink, Outlet } from "react-router";
 import { IS_MOCK } from "../../api/client";
 import type { Role, User } from "../../api/types";
@@ -33,6 +37,25 @@ import { StaffSidebar } from "./StaffSidebar";
 import { StaffTopBar } from "./StaffTopBar";
 
 const STAFF_SHELL_ROLES: readonly Role[] = ["BANK_STAFF", "ADMIN"];
+
+const SIDEBAR_ID = "staff-sidebar";
+export const SIDEBAR_COLLAPSED_KEY = "bloodlink.staffSidebarCollapsed";
+
+function readSidebarCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function writeSidebarCollapsed(collapsed: boolean) {
+  try {
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed));
+  } catch {
+    // Private mode or blocked storage: the choice just isn't remembered.
+  }
+}
 
 type SkipHandler = (event: MouseEvent<HTMLAnchorElement>) => void;
 
@@ -79,14 +102,35 @@ function StaffShell({
   onSignOut: () => void;
 }) {
   const serviceStatus = useServiceStatus();
+  const [collapsed, setCollapsed] = useState(readSidebarCollapsed);
+
+  // Keep "Connected" once the service has answered; set during render, not in an effect.
+  const [seenReady, setSeenReady] = useState(false);
+  if (serviceStatus === "ready" && !seenReady) setSeenReady(true);
+  const shownStatus = serviceStatus ?? (seenReady ? "ready" : null);
+
+  function toggleSidebar() {
+    const next = !collapsed;
+    setCollapsed(next);
+    writeSidebarCollapsed(next);
+  }
 
   return (
     <div className="flex min-h-dvh flex-col bg-background font-sans text-foreground">
       <SkipLink onClick={onSkip} />
       <TopNavHeader role={role} user={user} onSignOut={onSignOut} className="lg:hidden" />
-      <StaffTopBar role={role} serviceStatus={serviceStatus} className="hidden lg:grid" />
+      <StaffTopBar
+        role={role}
+        user={user}
+        serviceStatus={shownStatus}
+        sidebarId={SIDEBAR_ID}
+        sidebarCollapsed={collapsed}
+        onToggleSidebar={toggleSidebar}
+        onSignOut={onSignOut}
+        className="hidden lg:flex"
+      />
       <div className="flex min-w-0 flex-1">
-        <StaffSidebar role={role} user={user} onSignOut={onSignOut} className="hidden lg:flex" />
+        <StaffSidebar id={SIDEBAR_ID} role={role} collapsed={collapsed} className="hidden lg:flex" />
         <div className="flex min-w-0 flex-1 flex-col">
           <PageMain mainRef={mainRef} />
           <Footer />
@@ -206,7 +250,7 @@ function PageMain({ mainRef }: { mainRef: RefObject<HTMLElement | null> }) {
 
 function Footer() {
   return (
-    <footer className="border-t border--border">
+    <footer className="border-t border-border">
       <p className="mx-auto w-full max-w-6xl px-4 py-4 text-sm text-muted-foreground sm:px-8">
         Demonstration product. All data is fictional.
         {IS_MOCK && " Running against a mock server (simulated data)."}
