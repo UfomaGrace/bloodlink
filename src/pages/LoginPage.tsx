@@ -23,7 +23,8 @@ import { api } from "../api/endpoints";
 import type { Organisation, Role, Session, User } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { FormikField } from "../components/form/FormikField";
-import { useServiceStatus, type ServiceStatus } from "../hooks/useServiceStatus";
+import { ServiceStatusPill } from "../components/ServiceStatusPill";
+import { useServiceStatus } from "../hooks/useServiceStatus";
 import { Button } from "../shared/ui/button";
 import { Card, CardBody, CardHeader } from "../shared/ui/card";
 import { FormField } from "../shared/ui/form-field";
@@ -344,42 +345,6 @@ function FocusFirstError({ formRef }: { formRef: RefObject<HTMLFormElement | nul
   }, [submitCount, isSubmitting, errors, formRef]);
 
   return null;
-}
-
-const STATUS_TEXT: Record<ServiceStatus, string> = {
-  checking: "Waking the service…",
-  ready: "Service ready",
-  failed: "Service unreachable. Sign-in may fail.",
-};
-
-const STATUS_TONE: Record<ServiceStatus, string> = {
-  checking: "border-border text-muted-foreground",
-  ready: "border-success text-success",
-  failed: "border-warning text-warning",
-};
-
-/**
- * Real service only. The role="status" wrapper stays mounted (empty when there is nothing to say)
- * and only its content changes, so screen readers announce each change. Never blocks the form.
- */
-function ServiceStatusPill({ status }: { status: ServiceStatus | null }) {
-  return (
-    <div role="status">
-      {status && (
-        <p
-          className={`inline-flex items-center gap-2 rounded-full border bg-surface px-3 py-1 text-sm ${STATUS_TONE[status]}`}
-        >
-          {status === "checking" && (
-            <span
-              aria-hidden="true"
-              className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none"
-            />
-          )}
-          {STATUS_TEXT[status]}
-        </p>
-      )}
-    </div>
-  );
 }
 
 // Network of banks and hospitals: a dot at every line vertex inside the 640×800 viewBox, except
