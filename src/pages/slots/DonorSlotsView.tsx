@@ -6,10 +6,11 @@
 //   matched in the browser on slot.bank.area (lib/donationQueries listSlotsInArea), as on the
 //   staff list. Stale ?bankId, ?from and ?to from that list are ignored here.
 // - GET /bookings?status=BOOKED (every page): the hero's next donation and the "You're booked"
-//   marker. GET /bookings?status=ATTENDED (every page): the hero's donations pill.
+//   marker. GET /bookings?status=ATTENDED (every page): the hero's donations line. Either can
+//   fail without blocking the page: the hero falls back to its default words.
 // - Choose a day: seven buttons (DayPicker). The default is the first day that can be picked; if
 //   the chosen day can no longer be picked (another area, a reload), the default takes over.
-//   A live status says the chosen day and its count.
+//   A live status says the chosen day and its count ("Saturday 31 October · 3 slots · Lagos time").
 // - Booking: "Book this time" → ConfirmDialog → POST /donation-slots/{id}/bookings, as before.
 //   Not optimistic. Booked → success message, then the slots and the donor's bookings reload
 //   quietly (the card turns to "You're booked", the hero shows it). 409 SLOT_FULL, SLOT_CLOSED,
@@ -33,7 +34,7 @@ import { useAsync } from "../../hooks/useAsync";
 import { useNow } from "../../hooks/useNow";
 import { areaOptions, filterSlotsByArea, listAllBookings, listSlotBookings, listSlotsInArea } from "../../lib/donationQueries";
 import { addDays, bookingRefusal, placesLeftLabel, slotWhenLabel } from "../../lib/donations";
-import { buildWeek, defaultDay, longDayLabel, nextBooking, slotCountLabel, WEEK_LENGTH } from "../../lib/donorWeek";
+import { buildWeek, dayHeading, defaultDay, nextBooking, WEEK_LENGTH } from "../../lib/donorWeek";
 import { lagosToday } from "../../lib/expiry";
 import { DONOR_WEEK_SIMULATION_LABELS, simulateDonorWeek, type DonorWeekSimulation } from "../../lib/mockSimulation";
 import { ConfirmDialog } from "../../shared/ui/dialog";
@@ -188,7 +189,7 @@ export function DonorSlotsView() {
   }
 
   const showCards = !slots.loading || refreshing;
-  const dayStatus = showCards && slotData && selected ? `${longDayLabel(selected.date)} · ${slotCountLabel(selected.bookable)}` : "";
+  const dayStatus = showCards && slotData && selected ? dayHeading(selected.date, selected.bookable) : "";
   const progress = inFlight ?? (refreshing ? "Checking the latest places…" : "");
 
   return (
@@ -205,12 +206,9 @@ export function DonorSlotsView() {
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
           <section aria-labelledby="choose-day-heading" aria-busy={slots.loading || undefined} className="min-w-0">
             <div className="flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <h2 id="choose-day-heading" className="text-xl font-semibold tracking-tight">
-                  Choose a day
-                </h2>
-                <p className="mt-1 text-sm text-muted-foreground">Times are Lagos time.</p>
-              </div>
+              <h2 id="choose-day-heading" className="text-xl font-semibold tracking-tight">
+                Choose a day
+              </h2>
               {!(banks.error && !banks.data) && (
                 <UrlFilterSelect
                   label="Area"

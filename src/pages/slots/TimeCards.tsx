@@ -112,7 +112,7 @@ function TimeCard({
         ) : (
           <Button
             variant="secondary"
-            className="min-h-11 w-full border-primary text-primary"
+            className="min-h-11 w-full border-primary bg-surface text-primary hover:bg-(--color-surface-hover)"
             disabled={bookDisabled}
             onClick={() => onBook(slot)}
             aria-label={`Book this time: ${shortDayLabel(slotLagosDay(slot))}, ${time}, ${slot.bank.area}`}

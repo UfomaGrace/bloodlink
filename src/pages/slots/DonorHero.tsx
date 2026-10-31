@@ -1,29 +1,22 @@
 // DonorHero: the dark band at the top of the donor's slot screen.
 //
-// - Left: eyebrow, the page's h1, one line, and the donations pill ("3 donations · last on 4 Oct",
-//   from GET /bookings?status=ATTENDED). The pill is hidden with no donations, while loading, or
-//   when that read failed: it is encouragement, not information the donor needs.
-// - Right: "Your next donation", the soonest BOOKED booking that hasn't ended. Date tile, Lagos
-//   time, bank and area, "Today" / "Tomorrow" when it applies, Add to calendar (.ics, lib/calendar)
-//   and Manage booking (/bookings). With none: "No upcoming donation" and nothing else.
+// - Left: eyebrow, the page's h1 and one line under it. The h1 says when the donor's next
+//   donation is ("You're donating tomorrow.", by Lagos day), or "Give blood this week." with
+//   none, while loading, or when the BOOKED read failed. The line is "3 donations so far · thank
+//   you" (GET /bookings?status=ATTENDED); with no donations, while loading, or when that read
+//   failed, it is the usual "Book a time…" line instead.
+// - Right: "Your next donation", compact: date tile, Lagos time, "bank · area", and Add to calendar
+//   (.ics, lib/calendar) and Manage (/bookings) on the right. With none: "No upcoming donation".
+//   When the read failed we don't claim there is none: we say so, with Try again.
 // - Behind it, a faint static network with one red drop, like the sign-in panel. aria-hidden,
 //   pointer-events none, no animation.
 // - The band sets the focus ring to white; the white card sets it back to primary.
 
-import { Droplet } from "lucide-react";
 import { Link } from "react-router";
 import type { Booking } from "../../api/types";
 import type { AsyncResult } from "../../hooks/useAsync";
 import { bookingIcs, bookingIcsFileName, downloadIcs } from "../../lib/calendar";
-import {
-  dayNames,
-  donationsPillLabel,
-  donationsSummary,
-  longDayLabel,
-  relativeDayLabel,
-  slotClockRange,
-  slotLagosDay,
-} from "../../lib/donorWeek";
+import { dayNames, donationsLine, heroHeading, longDayLabel, slotClockRange, slotLagosDay } from "../../lib/donorWeek";
 import { cn } from "../../shared/cn";
 import { Button } from "../../shared/ui/button";
 import { Skeleton } from "../../shared/ui/skeleton";
@@ -32,7 +25,7 @@ const focusRing =
   "focus-visible:[outline:var(--focus-ring-width)_solid_var(--color-focus)] focus-visible:outline-offset-(--focus-ring-offset)";
 
 const cardAction = cn(
-  "inline-flex min-h-11 items-center text-sm font-medium text-primary underline underline-offset-4",
+  "inline-flex min-h-8 items-center text-sm font-medium whitespace-nowrap text-primary underline underline-offset-4",
   "hover:text-(--color-primary-hover)",
   focusRing,
 );
@@ -47,7 +40,7 @@ export function DonorHero({
   attended: Booking[] | null;
   now: number;
 }) {
-  const summary = attended ? donationsSummary(attended) : null;
+  const thanks = donationsLine(attended);
 
   return (
     <section
@@ -55,36 +48,30 @@ export function DonorHero({
       className="relative isolate overflow-hidden bg-secondary text-on-secondary [--color-focus:var(--color-on-secondary)]"
     >
       <HeroNetwork />
-      <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-10 sm:px-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-center lg:py-14">
+      <div className="mx-auto grid w-full max-w-6xl gap-6 px-4 py-7 sm:px-8 lg:grid-cols-[minmax(0,1fr)_26rem] lg:items-center">
         <div className="min-w-0">
           <p className="text-xs font-semibold tracking-widest text-on-secondary-muted uppercase">Donate in Lagos</p>
-          <h1 id="donor-hero-heading" className="mt-3 text-4xl font-semibold tracking-tight lg:text-5xl">
-            Give blood this week.
+          <h1 id="donor-hero-heading" className="mt-2 text-3xl leading-tight font-semibold tracking-tight lg:text-[2.375rem]">
+            {heroHeading(next.data, now)}
           </h1>
-          <p className="mt-3 text-on-secondary-muted">Book a time at a blood bank near you. It takes about an hour.</p>
-          {summary && (
-            <p className="mt-6 inline-flex items-center gap-2 rounded-full bg-(--color-secondary-hover) py-1.5 pr-4 pl-1.5 text-sm">
-              <span aria-hidden="true" className="inline-flex size-7 items-center justify-center rounded-full bg-surface">
-                <Droplet className="size-4 fill-brand-accent text-brand-accent" />
-              </span>
-              <span>{donationsPillLabel(summary)}</span>
-            </p>
-          )}
+          <p className="mt-2 text-on-secondary-muted">
+            {thanks ?? "Book a time at a blood bank near you. It takes about an hour."}
+          </p>
         </div>
-        <NextDonationCard next={next} now={now} />
+        <NextDonationCard next={next} />
       </div>
     </section>
   );
 }
 
-function NextDonationCard({ next, now }: { next: AsyncResult<Booking | null>; now: number }) {
-  const shell = "min-w-0 rounded-md bg-surface p-5 text-foreground shadow-lg [--color-focus:var(--color-primary)]";
+function NextDonationCard({ next }: { next: AsyncResult<Booking | null> }) {
+  const shell = "min-w-0 rounded-md bg-surface p-4 text-foreground shadow-lg [--color-focus:var(--color-primary)]";
 
   if (next.loading && next.data === null) {
     return (
       <div className={shell}>
         <p className="sr-only">Loading your next donation…</p>
-        <Skeleton lines={3} />
+        <Skeleton lines={2} />
       </div>
     );
   }
@@ -93,7 +80,7 @@ function NextDonationCard({ next, now }: { next: AsyncResult<Booking | null>; no
     return (
       <div className={shell}>
         <p className="text-sm">We couldn't check your bookings just now.</p>
-        <Button variant="ghost" className="mt-2 min-h-11 px-0 text-primary underline" onClick={next.reload}>
+        <Button variant="ghost" className="mt-1 min-h-11 px-0 text-primary underline" onClick={next.reload}>
           Try again
         </Button>
       </div>
@@ -112,7 +99,6 @@ function NextDonationCard({ next, now }: { next: AsyncResult<Booking | null>; no
   const { slot } = booking;
   const date = slotLagosDay(slot);
   const { weekdayShort, day } = dayNames(date);
-  const relative = relativeDayLabel(date, now);
   const { label: time, endsNextDay } = slotClockRange(slot);
 
   return (
@@ -120,49 +106,41 @@ function NextDonationCard({ next, now }: { next: AsyncResult<Booking | null>; no
       <h2 id="next-donation-heading" className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">
         Your next donation
       </h2>
-      <div className="mt-4 flex items-start gap-4">
+      <div className="mt-3 flex items-center gap-4">
         <div
           aria-hidden="true"
-          className="flex w-14 shrink-0 flex-col items-center rounded-md border border-border bg-(--color-surface-sunken) py-1.5"
+          className="flex w-12 shrink-0 flex-col items-center rounded-md border border-border bg-(--color-surface-sunken) py-1"
         >
           <span className="text-xs font-semibold text-muted-foreground uppercase">{weekdayShort}</span>
-          <span className="text-2xl leading-tight font-semibold tabular-nums">{day}</span>
+          <span className="text-xl leading-tight font-semibold tabular-nums">{day}</span>
         </div>
-        <div className="min-w-0">
-          {relative && (
-            <p className="mb-1 inline-flex rounded-full bg-(--color-info-subtle) px-2 py-0.5 text-xs font-semibold text-info">
-              {relative}
-            </p>
-          )}
+        <div className="min-w-0 flex-1">
           <p className="sr-only">
             <time dateTime={slot.startsAt}>{longDayLabel(date)}</time>
           </p>
-          <p className="text-xl font-semibold tabular-nums">
-            {time}
-            <span className="ml-1.5 text-sm font-normal text-muted-foreground">
-              Lagos time{endsNextDay ? ", ends the next day" : ""}
-            </span>
-          </p>
+          <p className="text-lg leading-tight font-semibold tabular-nums">{time}</p>
+          {endsNextDay && <p className="text-xs text-muted-foreground">Ends the next day</p>}
           <p className="text-sm text-muted-foreground wrap-break-word">
-            {slot.bank.name}, {slot.bank.area}
+            {slot.bank.name} · {slot.bank.area}
           </p>
         </div>
-      </div>
-      <div className="mt-4 flex flex-wrap items-center gap-x-6 border-t border-border pt-2">
-        <button
-          type="button"
-          className={cardAction}
-          onClick={() => downloadIcs(bookingIcsFileName(booking), bookingIcs(booking, Date.now()))}
-        >
-          Add to calendar
-        </button>
-        <Link to="/bookings" className={cardAction}>
-          Manage booking
-        </Link>
+        <div className="flex shrink-0 flex-col items-end">
+          <button
+            type="button"
+            className={cardAction}
+            onClick={() => downloadIcs(bookingIcsFileName(booking), bookingIcs(booking, Date.now()))}
+          >
+            Add to calendar
+          </button>
+          <Link to="/bookings" className={cardAction}>
+            Manage
+          </Link>
+        </div>
       </div>
     </section>
   );
 }
+
 
 // The sign-in panel's network, trimmed to a band: lines and dots, one red drop on a vertex.
 const NETWORK_LINES = [

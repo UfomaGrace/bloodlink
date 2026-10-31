@@ -1,12 +1,16 @@
-// donorWeek: Lagos days, counts per day, disabled days, the default day, labels, next booking, donations.
+// donorWeek: Lagos days, counts per day, disabled days, the default day, labels, next booking, donations,
+// the hero heading and the donations line.
 import { describe, expect, it } from "vitest";
 import type { Booking, DonationSlot, Organisation } from "../api/types";
 import {
   buildWeek,
+  dayHeading,
   defaultDay,
-  donationsPillLabel,
+  DEFAULT_HERO_HEADING,
+  donationsLine,
   donationsSummary,
   donorPlacesLabel,
+  heroHeading,
   longDayLabel,
   nextBooking,
   relativeDayLabel,
@@ -116,8 +120,40 @@ describe("nextBooking and donationsSummary", () => {
     const jun1 = slot("b", "2026-06-01T09:00:00Z", "2026-06-01T11:00:00Z", 4, 4);
     const summary = donationsSummary([booking("1", jun1, "ATTENDED"), booking("2", oct4, "ATTENDED")]);
     expect(summary).toEqual({ count: 2, lastDate: "2026-10-04" });
-    expect(donationsPillLabel(summary!)).toBe("2 donations · last on 4 Oct");
-    expect(donationsPillLabel({ count: 1, lastDate: "2026-06-01" })).toBe("1 donation · last on 1 Jun");
     expect(donationsSummary([])).toBeNull();
+  });
+});
+
+describe("hero words", () => {
+  const HOUR = 3_600_000;
+  const at = (startsAt: string) =>
+    booking("b", slot("s", startsAt, new Date(Date.parse(startsAt) + 2 * HOUR).toISOString(), 4, 1), "BOOKED");
+
+  it("heading: today, tomorrow, a later day, or the default with no booking", () => {
+    expect(heroHeading(at("2026-10-31T15:00:00Z"), NOW)).toBe("You're donating today.");
+    expect(heroHeading(at("2026-11-01T09:00:00Z"), NOW)).toBe("You're donating tomorrow.");
+    expect(heroHeading(at("2026-11-01T09:00:00Z"), Date.parse("2026-10-30T11:00:00Z"))).toBe(
+      "You're donating on Sunday 1 November.",
+    );
+    expect(heroHeading(null, NOW)).toBe(DEFAULT_HERO_HEADING);
+    expect(DEFAULT_HERO_HEADING).toBe("Give blood this week.");
+  });
+
+  it("heading goes by the Lagos day, not the UTC one", () => {
+    // Now: 22:30 Saturday in Lagos. 23:30 UTC Saturday is 00:30 Sunday in Lagos.
+    expect(heroHeading(at("2026-10-31T23:30:00Z"), Date.parse("2026-10-31T21:30:00Z"))).toBe("You're donating tomorrow.");
+  });
+
+  it("donations line: counts ATTENDED; null with none, or no list", () => {
+    const done = (id: string) => booking(id, slot(`s${id}`, "2026-10-04T09:00:00Z", "2026-10-04T11:00:00Z", 4, 4), "ATTENDED");
+    expect(donationsLine([done("1")])).toBe("1 donation so far · thank you");
+    expect(donationsLine([done("1"), done("2"), done("3")])).toBe("3 donations so far · thank you");
+    expect(donationsLine([])).toBeNull();
+    expect(donationsLine(null)).toBeNull();
+  });
+
+  it("day heading", () => {
+    expect(dayHeading("2026-10-31", 3)).toBe("Saturday 31 October · 3 slots · Lagos time");
+    expect(dayHeading("2026-10-31", 1)).toBe("Saturday 31 October · 1 slot · Lagos time");
   });
 });

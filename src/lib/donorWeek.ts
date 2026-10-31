@@ -1,4 +1,5 @@
 // Donor week: the donor's view of the next seven Lagos days, their next booking and their donations.
+// Also the screen's words for them: the hero heading, the donations line, the day heading.
 //
 // - Days are Lagos dates ("YYYY-MM-DD"), today first. A slot belongs to the Lagos day it starts on.
 // - Bookable: places left and not started (the same rule as canBook, without the role).
@@ -125,8 +126,26 @@ export function donationsSummary(attended: readonly Booking[]): { count: number;
   return { count: done.length, lastDate: slotLagosDay(latest.slot) };
 }
 
-/** "3 donations · last on 4 Oct". */
-export function donationsPillLabel(summary: { count: number; lastDate: string }): string {
-  const { day, monthShort } = dayNames(summary.lastDate);
-  return `${summary.count} ${summary.count === 1 ? "donation" : "donations"} · last on ${day} ${monthShort}`;
+/** "3 donations so far · thank you"; null with none, or while the list isn't here (loading, failed). */
+export function donationsLine(attended: readonly Booking[] | null): string | null {
+  const summary = attended && donationsSummary(attended);
+  if (!summary) return null;
+  return `${summary.count} ${summary.count === 1 ? "donation" : "donations"} so far · thank you`;
+}
+
+export const DEFAULT_HERO_HEADING = "Give blood this week.";
+
+/** The hero's h1: when the donor's next booking is, by Lagos day, or the default with none. */
+export function heroHeading(next: Booking | null, now: number): string {
+  if (!next) return DEFAULT_HERO_HEADING;
+  const date = slotLagosDay(next.slot);
+  const relative = relativeDayLabel(date, now);
+  if (relative === "Today") return "You're donating today.";
+  if (relative === "Tomorrow") return "You're donating tomorrow.";
+  return `You're donating on ${longDayLabel(date)}.`;
+}
+
+/** "Saturday 31 October · 3 slots · Lagos time". */
+export function dayHeading(date: string, count: number): string {
+  return `${longDayLabel(date)} · ${slotCountLabel(count)} · Lagos time`;
 }
