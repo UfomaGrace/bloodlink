@@ -7,7 +7,8 @@
 // - GET /requests/{id}. 404 means "not found or not yours", so both get "Request not found".
 // - Staff of the addressed bank and the administrator see Approve and Decline while the request is
 //   PENDING (lib/requestActions canDecide). Staff of another bank never see them.
-//     Approve → ConfirmDialog → POST /requests/{id}/approval (all or nothing).
+//     Approve → ConfirmDialog → POST /requests/{id}/approval (all or nothing). The dialog says how
+//       long the hold lasts for this urgency (lib/holdRelease approvalHoldLine; contract and ADR-002).
 //     Decline → dialog with a reason (lib/validation declineReason) → POST /requests/{id}/declination.
 //   Success shows the request the service sent back, plus a success alert.
 // - The same people see "Record as issued" while the request is APPROVED with every hold running
@@ -50,13 +51,14 @@
 // - While an action is in flight, the status line under the heading says so ("Recording issue…"),
 //   because the busy button only shows a spinner. An open dialog hides that line from screen
 //   readers, so the Issue, Reverse, Cancel and Release dialogs each have their own role="status" line too.
-// - Issue and reverse are not idempotent and take no Idempotency-Key yet. On TIMEOUT or NETWORK_ERROR we
-//   neither say "failed" nor retry: we reload, then say what the request shows now
-//   ("We couldn't confirm. The request now shows as Fulfilled.").
-// - 409 (UNITS_NO_LONGER_AVAILABLE, REQUEST_NOT_PENDING), 404 or a lost connection: the alert
-//   shows the service's message, the dialog closes and the request is loaded again. After a 409
-//   our copy is out of date (someone else decided it, or the units went), and after a lost
-//   connection we can't tell whether the action happened, so only a fresh GET shows the truth.
+// - Changes of state (approve, decline, issue, reverse, cancel, hold release) take no
+//   Idempotency-Key: a repeat never applies twice and answers 409 for the state the request is now
+//   in (contract, "Retrying a change of state"). So on TIMEOUT or NETWORK_ERROR we neither say
+//   "failed" nor resend: we read the request (GET /requests/{id}), then say what it shows now
+//   ("We couldn't confirm. The request now shows as Approved.").
+// - 409 (UNITS_NO_LONGER_AVAILABLE, REQUEST_NOT_PENDING) or 404: the alert shows the service's
+//   message, the dialog closes and the request is loaded again. After a 409 our copy is out of
+//   date (someone else decided it, or the units went), so only a fresh GET shows the truth.
 // - The result shows in ResultAlert (components/ResultAlert): role="status" for success,
 //   role="alert" for an error. Focus moves to it after each action.
 // - Mock only (components/MockControls, never on the live API): Prism always answers with one
@@ -100,6 +102,7 @@ import { useHoldClock } from "../hooks/useHoldClock";
 import {
   basedOnLabel,
   candidatesFoundMessage,
+  approvalHoldLine,
   EMERGENCY_HOLD_LINE,
   ENOUGH_FREE_TITLE,
   enoughFreeMessage,
@@ -437,7 +440,9 @@ function RequestDetail({ requestId }: { requestId: string }) {
       succeeded(res.data, approvedMessage(res.data));
     } catch (e) {
       setApproveOpen(false);
-      failed(toApiError(e));
+      const error = toApiError(e);
+      if (error.isConnectionProblem) checkAfterLostConnection();
+      else failed(error);
     }
   }
 
@@ -456,7 +461,8 @@ function RequestDetail({ requestId }: { requestId: string }) {
         setDeclineIssues({ error, issues });
       } else {
         setDeclineOpen(false);
-        failed(error);
+        if (error.isConnectionProblem) checkAfterLostConnection();
+        else failed(error);
       }
     } finally {
       setDeclining(false);
@@ -752,7 +758,7 @@ function RequestDetail({ requestId }: { requestId: string }) {
         open={approveOpen}
         onOpenChange={setApproveOpen}
         title="Approve this request?"
-        description={`Reserve ${unitsLabel(request.quantity)} of ${what}? If fewer are free, nothing is reserved.`}
+        description={`Reserve ${unitsLabel(request.quantity)} of ${what}? If fewer are free, nothing is reserved. ${approvalHoldLine(request.urgency)}`}
         confirmLabel="Approve and reserve"
         onConfirm={approve}
       />

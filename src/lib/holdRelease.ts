@@ -6,7 +6,8 @@
 // - Hold length depends on urgency: emergency 1 h, urgent 2 h, routine 4 h. These are service
 //   settings (HOLD_EMERGENCY, HOLD_URGENT, HOLD_ROUTINE), so we never work out a hold end
 //   ourselves: every time shown is the service's holdExpiresAt. The lengths appear only in wording
-//   below, labelled as set by the service. If ADR-002 changes, this file is the one to change.
+//   (HOLD_LENGTH_LABELS below, also used by the Approve dialog), labelled as set by the service.
+//   If ADR-002 changes, this file is the one to change.
 // - No automatic pre-emption. Staff of the owning bank (or the administrator) may release a
 //   ROUTINE hold for an EMERGENCY request, with a reason. The routine request goes back to PENDING
 //   with a history entry; one transaction; refused when free matching units could already meet
@@ -28,8 +29,9 @@ import type {
   BloodRequestPage,
   RequestQuery,
   Reservation,
+  Urgency,
 } from "../api/types";
-import { formatTime, holdTimeLabel } from "./labels";
+import { formatTime, holdTimeLabel, URGENCY_LABELS } from "./labels";
 
 /** Requests per page when scanning for candidates (the contract's maximum). */
 export const CANDIDATE_PAGE_SIZE = 100;
@@ -144,11 +146,26 @@ async function readApproved(reads: ScanReads, signal?: AbortSignal) {
 
 // ---- Wording (ADR-002, accepted 25 Oct 2026). Keep every policy-dependent sentence here. ----
 
-/** Hold lengths as the service sets them (ADR-002). For wording only: never used to compute a time. */
-const HOLD_LENGTH_LABELS = { EMERGENCY: "1 hour", URGENT: "2 hours", ROUTINE: "4 hours" } as const;
+/**
+ * How long a hold lasts from approval, by urgency. The one place these lengths are written.
+ * Source: contract/openapi.yaml, POST /requests/{requestId}/approval ("The hold (ADR-002) starts at
+ * this approval and lasts by urgency: EMERGENCY 1 hour, URGENT 2 hours, ROUTINE 4 hours") and
+ * Reservation.holdExpiresAt; policy in ADR-002. Service settings (HOLD_EMERGENCY, HOLD_URGENT,
+ * HOLD_ROUTINE), so for wording only: never used to compute a time (that is holdExpiresAt).
+ */
+export const HOLD_LENGTH_LABELS: Readonly<Record<Urgency, string>> = {
+  EMERGENCY: "1 hour",
+  URGENT: "2 hours",
+  ROUTINE: "4 hours",
+};
 
 /** One line in the emergency's Decision section. */
 export const EMERGENCY_HOLD_LINE = `Emergency holds last ${HOLD_LENGTH_LABELS.EMERGENCY} (set by the service), so collect promptly.`;
+
+/** In the Approve dialog: how long the units will be held, for this request's urgency. */
+export function approvalHoldLine(urgency: Urgency): string {
+  return `They will be held for ${HOLD_LENGTH_LABELS[urgency]} (${URGENCY_LABELS[urgency].toLowerCase()} hold, set by the service). If they aren't issued by then, the hold lapses.`;
+}
 
 /** The release section's introduction. */
 export const RELEASE_INTRO =

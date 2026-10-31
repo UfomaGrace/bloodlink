@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import { ApiError, type ApiResponse } from "../api/client";
 import type { Availability, BloodRequest, BloodRequestPage, Reservation } from "../api/types";
 import {
+  approvalHoldLine,
   CANDIDATE_PAGE_LIMIT,
   CANDIDATE_PAGE_SIZE,
   EMERGENCY_HOLD_LINE,
+  HOLD_LENGTH_LABELS,
   freeUnitsFor,
   freeUnitsMeet,
   holdReleaseError,
@@ -177,6 +179,18 @@ describe("wording (ADR-002)", () => {
 
   it("labels the emergency hold length as set by the service", () => {
     expect(EMERGENCY_HOLD_LINE).toBe("Emergency holds last 1 hour (set by the service), so collect promptly.");
+  });
+
+  it("has the contract's hold lengths: emergency 1 hour, urgent 2 hours, routine 4 hours", () => {
+    expect(HOLD_LENGTH_LABELS).toEqual({ EMERGENCY: "1 hour", URGENT: "2 hours", ROUTINE: "4 hours" });
+  });
+
+  it("tells the approver how long this urgency's hold lasts", () => {
+    expect(approvalHoldLine("EMERGENCY")).toBe(
+      "They will be held for 1 hour (emergency hold, set by the service). If they aren't issued by then, the hold lapses.",
+    );
+    expect(approvalHoldLine("URGENT")).toMatch(/^They will be held for 2 hours \(urgent hold/);
+    expect(approvalHoldLine("ROUTINE")).toMatch(/^They will be held for 4 hours \(routine hold/);
   });
 });
 
