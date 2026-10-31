@@ -100,6 +100,14 @@ describe("NewSlotPage: open a slot", () => {
     expect(mocks.createDonationSlot).not.toHaveBeenCalled();
   });
 
+  it("refuses a date after 31 Dec 2100 before sending (the contract's last day)", async () => {
+    renderPage();
+    expect(screen.getByLabelText(/^Date/).getAttribute("max")).toBe("2100-12-31");
+    await fillAndSubmit({ date: "2101-01-01" });
+    expect(await screen.findByText("The date can't be after 31 Dec 2100.")).toBeTruthy();
+    expect(mocks.createDonationSlot).not.toHaveBeenCalled();
+  });
+
   it("422: puts startsAt, endsAt and capacity details on their fields, the rest in the alert", async () => {
     mocks.createDonationSlot.mockRejectedValue(
       new ApiError({

@@ -40,6 +40,7 @@ import { ResultAlert, type Notice } from "../components/ResultAlert";
 import { UrlFilterSelect } from "../components/UrlFilterSelect";
 import { useAsync, type AsyncResult } from "../hooks/useAsync";
 import { useNow } from "../hooks/useNow";
+import { EARLIEST_DATE, LATEST_DATE } from "../lib/dateBounds";
 import { listSlotBookings, listSlotsInArea } from "../lib/donationQueries";
 import {
   bookingClosedReason,
@@ -409,8 +410,22 @@ function SlotDateRange({
       {() => (
         <Form ref={formRef} noValidate aria-label="Dates" className="mt-4 grid gap-4 sm:grid-cols-2 sm:items-start">
           <FocusFirstError formRef={formRef} />
-          <FormikField name="from" label="First day" type="date" hint="Lagos date. Empty means today." />
-          <FormikField name="to" label="Last day" type="date" hint="Lagos date, up to 31 days after the first." />
+          <FormikField
+            name="from"
+            label="First day"
+            type="date"
+            min={EARLIEST_DATE}
+            max={LATEST_DATE}
+            hint="Lagos date. Empty means today."
+          />
+          <FormikField
+            name="to"
+            label="Last day"
+            type="date"
+            min={EARLIEST_DATE}
+            max={LATEST_DATE}
+            hint="Lagos date, up to 31 days after the first."
+          />
           {/* Its own row, so hints and errors of any length never push it out of line. */}
           <div className="sm:col-span-2">
             <Button type="submit" variant="secondary" className="min-h-11">
@@ -474,7 +489,7 @@ function Results({
   if (rangeProblem) {
     return (
       <EmptyState
-        title="Choose a shorter date range"
+        title="Choose other dates"
         description={rangeProblem}
         action={{ label: "Clear filters", onClick: onClearFilters }}
       />

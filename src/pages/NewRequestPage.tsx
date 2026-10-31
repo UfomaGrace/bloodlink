@@ -65,6 +65,7 @@ import {
   rhesus,
   urgency,
 } from "../lib/validation";
+import { LATEST_DATE } from "../lib/dateBounds";
 import { cn } from "../shared/cn";
 import { Button } from "../shared/ui/button";
 import { ConfirmDialog } from "../shared/ui/dialog";
@@ -394,6 +395,7 @@ function RequestForm({
               hint="Date and time, in your local time."
               type="datetime-local"
               min={localDateTimeInput()}
+              max={`${LATEST_DATE}T23:59`}
               required
             />
 

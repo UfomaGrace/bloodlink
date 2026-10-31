@@ -63,7 +63,7 @@ export function reloadsAfterRefusal(error: ApiError): boolean {
 
 /** Our words for 409 REQUEST_CLOSED (it closed before ours arrived, or a second cancellation). */
 export const REQUEST_CLOSED_MESSAGE =
-  "This request is already closed (fulfilled, declined, cancelled, or its hold lapsed or a unit expired), so it can't be cancelled. Nothing changed. We've loaded its latest state.";
+  "This request is already closed, so it can't be cancelled. Nothing changed. Its current status is shown.";
 
 /** A cancellation refusal with our own message for 409 REQUEST_CLOSED; anything else unchanged. */
 export function cancelRefusalError(error: ApiError): ApiError {

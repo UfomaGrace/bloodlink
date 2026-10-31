@@ -114,7 +114,9 @@ describe("reloadsAfterRefusal", () => {
 describe("cancelRefusalError", () => {
   it("gives 409 REQUEST_CLOSED our own message, keeping the code and Reference", () => {
     const shown = cancelRefusalError(apiError(409, "REQUEST_CLOSED"));
-    expect(shown.message).toMatch(/^This request is already closed .* so it can't be cancelled\. Nothing changed\./);
+    expect(shown.message).toBe(
+      "This request is already closed, so it can't be cancelled. Nothing changed. Its current status is shown.",
+    );
     expect(shown.code).toBe("REQUEST_CLOSED");
     expect(shown.status).toBe(409);
     expect(shown.requestId).toBe(apiError(409, "REQUEST_CLOSED").requestId);

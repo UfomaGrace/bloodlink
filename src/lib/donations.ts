@@ -4,14 +4,15 @@
 //   "Lagos time", whatever the viewer's own time zone. Lagos is UTC+1 all year: it has no
 //   daylight saving, so a fixed +01:00 offset is always right there.
 // - GET /donation-slots takes `from` and `to` as Lagos dates ("YYYY-MM-DD"), with `to` at most
-//   31 days after `from` (contract listDonationSlots). checkSlotRange enforces that in the form,
-//   so the service never has to refuse it.
+//   31 days after `from` (contract listDonationSlots), and both from 2000 to 2100 (lib/dateBounds).
+//   checkSlotRange enforces that in the form and on the URL, so the service never has to refuse it.
 // - The service has the last word (403 / 409). The can* helpers only decide which buttons to
 //   show, so nobody is offered an action the service would refuse.
 // - Pure: `now` is passed in (milliseconds), so the rules are easy to test.
 
 import type { ClientErrorCode } from "../api/client";
 import type { Attendance, Booking, BookingStatus, DonationSlot } from "../api/types";
+import { EARLIEST_DATE_LABEL, isWithinDateBounds, LATEST_DATE_LABEL } from "./dateBounds";
 import { lagosToday } from "./expiry";
 import { BOOKING_STATUS_LABELS, formatDate } from "./labels";
 import type { Viewer } from "./requestActions";
@@ -43,6 +44,10 @@ export function addDays(isoDate: string, days: number): string {
  * service use its 14-day default, which is always within the limit.
  */
 export function checkSlotRange(from: string, to: string, now: number): string | null {
+  // The service answers 400 for a date outside 2000–2100 (lib/dateBounds).
+  if ((from && !isWithinDateBounds(from)) || (to && !isWithinDateBounds(to))) {
+    return `Choose days from ${EARLIEST_DATE_LABEL} to ${LATEST_DATE_LABEL}.`;
+  }
   if (!to) return null;
   const start = from || lagosToday(now);
   if (to < start) return "The last day must be on or after the first day.";

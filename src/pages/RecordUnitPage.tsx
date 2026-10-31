@@ -1,6 +1,7 @@
 // RecordUnitPage (/units/new): bank staff record one received unit.
 //
-// - The Yup schema is built from lib/validation.ts, so it matches the contract's UnitCreate.
+// - The Yup schema is built from lib/validation.ts, so it matches the contract's UnitCreate
+//   (collection date from 1 Jan 2000, expiry date up to 31 Dec 2100: lib/dateBounds).
 // - POST /units → success panel with the saved unit. The bank comes from the token.
 // - POST /units is NOT idempotent (no Idempotency-Key). A repeated reference is refused
 //   with 409 DUPLICATE_UNIT_REFERENCE, which is how we spot a retry after a lost answer:
@@ -43,6 +44,7 @@ import {
   todayIso,
   unitReference,
 } from "../lib/validation";
+import { EARLIEST_DATE, LATEST_DATE } from "../lib/dateBounds";
 import { cn } from "../shared/cn";
 import { Button } from "../shared/ui/button";
 import { StatusBadge } from "../shared/ui/status-badge";
@@ -240,7 +242,14 @@ export default function RecordUnitPage() {
                   />
 
                   <div className="grid gap-5 sm:grid-cols-2">
-                    <FormikField name="collectionDate" label="Collection date" type="date" max={todayIso()} required />
+                    <FormikField
+                      name="collectionDate"
+                      label="Collection date"
+                      type="date"
+                      min={EARLIEST_DATE}
+                      max={todayIso()}
+                      required
+                    />
                     <FormikField
                       name="expiryDate"
                       label="Expiry date"
@@ -248,6 +257,7 @@ export default function RecordUnitPage() {
                       hintPlacement="below"
                       type="date"
                       min={values.collectionDate || undefined}
+                      max={LATEST_DATE}
                       required
                     />
                   </div>

@@ -12,8 +12,11 @@
 //   expects). Strings in that format compare correctly as text, so "after" is just ">".
 // - Date-times are typed into <input type="datetime-local">, which gives local time with no
 //   offset ("2026-10-26T14:00"). localDateTimeToIso turns that into the contract's ISO instant.
+// - Every date sent is from 2000-01-01 to 2100-12-31 (lib/dateBounds). isoDate checks that, so
+//   every date field built on it does; neededByFuture checks the instant's date.
 
 import * as Yup from "yup";
+import { EARLIEST_DATE, EARLIEST_DATE_LABEL, LATEST_DATE, LATEST_DATE_LABEL } from "./dateBounds";
 import { lagosDateTimeToIso, MAX_SLOT_CAPACITY, MAX_SLOT_HOURS } from "./donations";
 import { lagosToday } from "./expiry";
 import { BLOOD_GROUP_LABELS, COMPONENT_LABELS, keysOf, RHESUS_LABELS, URGENCY_LABELS } from "./labels";
@@ -94,6 +97,11 @@ export const neededByFuture = (now: () => number = Date.now) =>
     .test("future", "Choose a time later than now.", (value) => {
       const iso = value ? localDateTimeToIso(value) : null;
       return iso === null || Date.parse(iso) > now();
+    })
+    // The instant the service receives (UTC) must be on 31 Dec 2100 or earlier.
+    .test("latest", `Choose a time no later than ${LATEST_DATE_LABEL}.`, (value) => {
+      const iso = value ? localDateTimeToIso(value) : null;
+      return iso === null || iso.slice(0, 10) <= LATEST_DATE;
     });
 
 /** 1–40 letters, numbers and hyphens. Unique within the bank (only the server can check that: 409). */
@@ -104,9 +112,13 @@ export const unitReference = () =>
     .max(40, "The reference can be at most 40 characters.")
     .matches(/^[A-Za-z0-9-]+$/, "Use only letters, numbers and hyphens, like LCB-2026-00042.");
 
-/** A required "YYYY-MM-DD" date. `label` is lower case, e.g. "collection date". */
+/** A required "YYYY-MM-DD" date from 2000-01-01 to 2100-12-31. `label` is lower case, e.g. "collection date". */
 export const isoDate = (label: string) =>
-  Yup.string().required(`Enter the ${label}.`).matches(ISO_DATE, `Enter the ${label} as a full date.`);
+  Yup.string()
+    .required(`Enter the ${label}.`)
+    .matches(ISO_DATE, `Enter the ${label} as a full date.`)
+    .test("earliest", `The ${label} can't be before ${EARLIEST_DATE_LABEL}.`, (value) => !value || value >= EARLIEST_DATE)
+    .test("latest", `The ${label} can't be after ${LATEST_DATE_LABEL}.`, (value) => !value || value <= LATEST_DATE);
 
 /** A required date that is today or earlier. */
 export const dateNotInFuture = (label: string) =>

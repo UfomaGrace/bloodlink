@@ -1,7 +1,8 @@
 // NewSlotPage (/slots/new): bank staff open a donation slot at their own bank.
 //
 // - Date, start time, end time (Lagos time) and capacity. The Yup schema is built from
-//   lib/validation.ts so it matches the contract's DonationSlotCreate: the start is in the future,
+//   lib/validation.ts so it matches the contract's DonationSlotCreate: the date is no later than
+//   31 Dec 2100 (lib/dateBounds), the start is in the future,
 //   the end is after the start and at most 8 hours later, capacity is a whole number 1–50.
 //   The end is on the same date as the start: a slot past midnight can't be entered here.
 // - The times are turned into instants with Lagos's fixed +01:00 offset (lib/donations
@@ -33,6 +34,7 @@ import { FormAlert } from "../components/form/FormAlert";
 import { FormikField } from "../components/form/FormikField";
 import { useIdempotencyKey } from "../hooks/useIdempotencyKey";
 import { useNow } from "../hooks/useNow";
+import { LATEST_DATE } from "../lib/dateBounds";
 import { lagosToday } from "../lib/expiry";
 import {
   formatLagosDay,
@@ -215,7 +217,15 @@ export default function NewSlotPage() {
               return (
                 <Form ref={formRef} noValidate className="mt-6 flex flex-col gap-5">
                   <FocusFirstError formRef={formRef} />
-                  <FormikField name="date" label="Date" type="date" min={lagosToday(now)} hint="Lagos date." required />
+                  <FormikField
+                    name="date"
+                    label="Date"
+                    type="date"
+                    min={lagosToday(now)}
+                    max={LATEST_DATE}
+                    hint="Lagos date."
+                    required
+                  />
 
                   <div className="grid gap-5 sm:grid-cols-2">
                     <FormikField

@@ -81,6 +81,16 @@ describe("checkSlotRange (to at most 31 days after from)", () => {
     expect(checkSlotRange("2026-11-02", "2026-11-01", NOW)).toBe("The last day must be on or after the first day.");
   });
 
+  it("refuses a first or last day outside 2000–2100 (the service answers 400)", () => {
+    const message = "Choose days from 1 Jan 2000 to 31 Dec 2100.";
+    expect(checkSlotRange("2000-01-01", "2000-01-31", NOW)).toBeNull();
+    expect(checkSlotRange("2100-12-01", "2100-12-31", NOW)).toBeNull();
+    expect(checkSlotRange("1999-12-31", "", NOW)).toBe(message);
+    expect(checkSlotRange("1999-12-31", "2000-01-10", NOW)).toBe(message);
+    expect(checkSlotRange("2100-12-20", "2101-01-01", NOW)).toBe(message);
+    expect(checkSlotRange("", "2101-01-01", NOW)).toBe(message);
+  });
+
   it("leaves an empty last day to the service's 14-day default", () => {
     expect(checkSlotRange("2026-11-01", "", NOW)).toBeNull();
     expect(checkSlotRange("", "", NOW)).toBeNull();

@@ -258,7 +258,28 @@ describe("SlotsPage: filters", () => {
 
   it("a link with a range over 31 days loads nothing and says why", async () => {
     renderPage("/slots?from=2026-11-01&to=2026-12-20");
-    expect(await screen.findByRole("heading", { name: "Choose a shorter date range" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Choose other dates" })).toBeTruthy();
+    expect(mocks.listDonationSlots).not.toHaveBeenCalled();
+  });
+
+  it("refuses a day after 31 Dec 2100 in the form, and sends nothing", async () => {
+    renderPage();
+    await screen.findByText("3 of 10 places left");
+    fireEvent.change(screen.getByLabelText(/First day/), { target: { value: "2100-12-31" } });
+    fireEvent.change(screen.getByLabelText(/Last day/), { target: { value: "2101-01-01" } });
+    await userEvent.click(screen.getByRole("button", { name: "Show slots" }));
+
+    expect(await screen.findByText("Choose days from 1 Jan 2000 to 31 Dec 2100.")).toBeTruthy();
+    expect(mocks.listDonationSlots).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["a first day before 2000", "/slots?from=1999-12-31"],
+    ["a last day after 2100", "/slots?from=2100-12-20&to=2101-01-02"],
+  ])("a link with %s loads nothing and says which days can be chosen", async (_, url) => {
+    renderPage(url);
+    expect(await screen.findByRole("heading", { name: "Choose other dates" })).toBeTruthy();
+    expect(screen.getAllByText("Choose days from 1 Jan 2000 to 31 Dec 2100.").length).toBeGreaterThan(0);
     expect(mocks.listDonationSlots).not.toHaveBeenCalled();
   });
 

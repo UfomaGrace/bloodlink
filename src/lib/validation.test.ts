@@ -6,6 +6,7 @@ import {
   dateAfter,
   dateNotInFuture,
   declineReason,
+  isoDate,
   localDateTimeInput,
   localDateTimeToIso,
   neededByFuture,
@@ -19,6 +20,7 @@ import {
   unitReference,
   urgency,
 } from "./validation";
+import { isWithinDateBounds } from "./dateBounds";
 
 /** The first error message, or null when valid. */
 function errorOf(schema: Yup.Schema, value: unknown): string | null {
@@ -66,6 +68,29 @@ describe("dateNotInFuture", () => {
       "The collection date can't be in the future.",
     );
   });
+
+  it("collection date: from 1 Jan 2000 (contract UnitCreate)", () => {
+    expect(errorOf(dateNotInFuture("collection date"), "2000-01-01")).toBeNull();
+    expect(errorOf(dateNotInFuture("collection date"), "1999-12-31")).toBe(
+      "The collection date can't be before 1 Jan 2000.",
+    );
+  });
+});
+
+describe("date bounds (every date sent is from 2000-01-01 to 2100-12-31)", () => {
+  it("isoDate accepts both edge days and refuses the days just outside", () => {
+    expect(errorOf(isoDate("date"), "2000-01-01")).toBeNull();
+    expect(errorOf(isoDate("date"), "2100-12-31")).toBeNull();
+    expect(errorOf(isoDate("date"), "1999-12-31")).toBe("The date can't be before 1 Jan 2000.");
+    expect(errorOf(isoDate("date"), "2101-01-01")).toBe("The date can't be after 31 Dec 2100.");
+  });
+
+  it("dateBounds agrees with the form checks", () => {
+    expect(isWithinDateBounds("2000-01-01")).toBe(true);
+    expect(isWithinDateBounds("2100-12-31")).toBe(true);
+    expect(isWithinDateBounds("1999-12-31")).toBe(false);
+    expect(isWithinDateBounds("2101-01-01")).toBe(false);
+  });
 });
 
 describe("dateAfter", () => {
@@ -83,6 +108,13 @@ describe("dateAfter", () => {
 
   it("waits for the other field before comparing", () => {
     expect(errorOf(schema, { collectionDate: "", expiryDate: "2026-11-30" })).toBeNull();
+  });
+
+  it("expiry date: up to 31 Dec 2100 (contract UnitCreate)", () => {
+    expect(errorOf(schema, { collectionDate: "2026-10-20", expiryDate: "2100-12-31" })).toBeNull();
+    expect(errorOf(schema, { collectionDate: "2026-10-20", expiryDate: "2101-01-01" })).toBe(
+      "The expiry date can't be after 31 Dec 2100.",
+    );
   });
 });
 
@@ -140,6 +172,12 @@ describe("neededByFuture", () => {
     expect(errorOf(neededByFuture(now), "2026-10-25T18:00")).toBe("Choose a time later than now.");
     expect(errorOf(neededByFuture(now), "")).toBe("Enter when the blood is needed.");
     expect(errorOf(neededByFuture(now), "2026-10-26")).toBe("Enter a full date and time.");
+  });
+
+  it("no later than 31 Dec 2100 (contract BloodRequestCreate)", () => {
+    // Midday, so the instant stays on the same date in any test time zone.
+    expect(errorOf(neededByFuture(now), "2100-12-31T12:00")).toBeNull();
+    expect(errorOf(neededByFuture(now), "2101-01-01T12:00")).toBe("Choose a time no later than 31 Dec 2100.");
   });
 });
 
@@ -206,6 +244,11 @@ describe("donation slot fields (DonationSlotCreate)", () => {
     expect(errorOf(slotDate(NOW), "2026-10-28")).toBe("Choose today or a later date.");
     expect(errorOf(slotDate(NOW), "2026-10-29")).toBeNull();
     expect(errorOf(slotDate(() => Date.parse("2026-10-29T23:30:00Z")), "2026-10-29")).toBe("Choose today or a later date.");
+  });
+
+  it("date: no later than 31 Dec 2100", () => {
+    expect(errorOf(slotDate(NOW), "2100-12-31")).toBeNull();
+    expect(errorOf(slotDate(NOW), "2101-01-01")).toBe("The date can't be after 31 Dec 2100.");
   });
 
   it("start: later than now, read as Lagos time", () => {
