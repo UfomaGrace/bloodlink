@@ -178,6 +178,12 @@ export interface paths {
          *     409 `UNITS_NO_LONGER_AVAILABLE` and the request stays PENDING, so the bank can decline it
          *     or retry later. A unit can never be held by two reservations at once; the database enforces this.
          *
+         *     **The hold** (ADR-002) starts at this approval and lasts by urgency: EMERGENCY 1 hour, URGENT 2 hours,
+         *     ROUTINE 4 hours. Each reservation's `holdExpiresAt` is approval time plus that length; show it as
+         *     "hold ends at". When it passes before the units are issued, the reservation reads `LAPSED` and the units count
+         *     as available again at once, even before any background job runs; the request reads `LAPSED`, which is final
+         *     (approval needs a PENDING request), so the hospital makes a new request.
+         *
          *     Not idempotent: approving an already approved request returns 409 `REQUEST_NOT_PENDING`.
          */
         post: operations["approveRequest"];
@@ -314,7 +320,8 @@ export interface paths {
          * @description **Only staff of the hospital that made the request.** Other hospitals receive 404; bank staff, donors and
          *     the administrator receive 403. Allowed while the request is PENDING or APPROVED. Cancelling an APPROVED
          *     request releases its holds in the same transaction: each reservation becomes RELEASED and each unit
-         *     returns to AVAILABLE. The request becomes CANCELLED. Not idempotent: a second cancellation returns 409.
+         *     returns to AVAILABLE, or becomes EXPIRED if it is past its expiry date (an expired unit never returns to
+         *     stock). The request becomes CANCELLED. A second cancellation changes nothing and returns 409 `REQUEST_CLOSED`.
          */
         post: operations["cancelRequest"];
         delete?: never;
@@ -350,8 +357,10 @@ export interface paths {
          *     - the emergency request is then approved exactly as `POST /requests/{id}/approval` would. If it still cannot
          *       be met in full, nothing is released (all or nothing).
          *
-         *     The routine request goes back to PENDING with a HOLD_RELEASED history entry naming the emergency
-         *     request and the reason, so it is never silently lost. The response is the emergency request, now APPROVED.
+         *     The released units return to AVAILABLE before the emergency is approved, or become EXPIRED if past their
+         *     expiry date (an expired unit never returns to stock). The routine request goes back to PENDING with a
+         *     HOLD_RELEASED history entry naming the emergency request and the reason, so it is never silently lost.
+         *     The response is the emergency request, now APPROVED.
          */
         post: operations["releaseHoldForEmergency"];
         delete?: never;
@@ -376,7 +385,13 @@ export interface paths {
         put?: never;
         /**
          * Open a donation slot at the signed-in staff member's bank
-         * @description Bank staff only. The bank comes from the token. Not safe to repeat; each call opens a new slot.
+         * @description Bank staff only. The bank comes from the token.
+         *
+         *     **Safe to submit twice**, the same way as `POST /requests`: the client sends an `Idempotency-Key` (a UUID)
+         *     created once per form submission and reused on every retry of it.
+         *     - First time a key is seen: 201, slot opened.
+         *     - Same key, same body: 200 with the slot already opened, and `Idempotent-Replayed: true`. No second slot.
+         *     - Same key, different body: 422 `IDEMPOTENCY_KEY_REUSED`.
          */
         post: operations["createDonationSlot"];
         delete?: never;
@@ -589,6 +604,8 @@ export interface components {
          *     LAPSED: the hold passed before issue; units returned to stock. A reversed issue, or a routine hold
          *     released for an emergency, puts the request back to PENDING.
          *     UNIT_EXPIRED: a reserved unit passed its expiry date before issue.
+         *     LAPSED and UNIT_EXPIRED are final, like DECLINED and CANCELLED: approval needs a PENDING request, so the
+         *     hospital makes a new request.
          * @enum {string}
          */
         RequestState: "PENDING" | "APPROVED" | "DECLINED" | "CANCELLED" | "FULFILLED" | "LAPSED" | "UNIT_EXPIRED";
@@ -662,12 +679,12 @@ export interface components {
             component: components["schemas"]["Component"];
             /**
              * Format: date
-             * @description Not in the future.
+             * @description Not in the future. From 2000-01-01.
              */
             collectionDate: string;
             /**
              * Format: date
-             * @description After collectionDate. The unit may be used up to and including this date.
+             * @description After collectionDate. The unit may be used up to and including this date. Up to 2100-12-31.
              */
             expiryDate: string;
         };
@@ -781,7 +798,7 @@ export interface components {
             urgency: components["schemas"]["Urgency"];
             /**
              * Format: date-time
-             * @description Must be in the future.
+             * @description Must be in the future, and no later than 2100-12-31.
              */
             neededBy: string;
         };
@@ -795,7 +812,8 @@ export interface components {
             status: components["schemas"]["ReservationStatus"];
             /**
              * Format: date-time
-             * @description The hold ends at this time. Show it as "hold ends at".
+             * @description The hold ends at this time: approval time plus 1 hour (EMERGENCY), 2 hours (URGENT) or 4 hours (ROUTINE).
+             *     Show it as "hold ends at". After it, the reservation reads `LAPSED` and its unit is available stock again.
              */
             holdExpiresAt: string;
             /** Format: date-time */
@@ -1783,7 +1801,7 @@ export interface operations {
                     /**
                      * @example {
                      *       "code": "REQUEST_NOT_APPROVED",
-                     *       "message": "This request cannot be issued because its hold lapsed at 11:06. Approve it again if units are free.",
+                     *       "message": "This request cannot be issued: its hold has lapsed. The hospital can make a new request.",
                      *       "requestId": "7f9c2b1e-4c1a-4f7e-9d0b-2a6c8e1f3b55",
                      *       "details": []
                      *     }
@@ -1961,9 +1979,9 @@ export interface operations {
         parameters: {
             query?: {
                 bankId?: components["parameters"]["BankIdQuery"];
-                /** @description First day to include. Default today. */
+                /** @description First day to include. Default today. Dates from 2000 to 2100. */
                 from?: string;
-                /** @description Last day to include. Default 14 days after `from`. At most 31 days after `from`. */
+                /** @description Last day to include. Default 14 days after `from`. At most 31 days after `from`, and not after 2100. */
                 to?: string;
             };
             header?: {
@@ -1993,9 +2011,11 @@ export interface operations {
     createDonationSlot: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 /** @description One identifier per user action (a UUID is recommended). Echoed back and logged. */
                 "X-Request-Id"?: components["parameters"]["RequestIdHeader"];
+                /** @description Client-generated UUID, one per form submission, reused on retries. */
+                "Idempotency-Key": string;
             };
             path?: never;
             cookie?: never;
@@ -2013,6 +2033,18 @@ export interface operations {
             };
         };
         responses: {
+            /** @description Replay of an earlier submission with the same key and body; nothing new opened */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    /** @description Always `true` on a replay. */
+                    "Idempotent-Replayed"?: "true";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DonationSlot"];
+                };
+            };
             /** @description Slot opened */
             201: {
                 headers: {
