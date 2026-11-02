@@ -373,6 +373,7 @@ function RequestForm({
                 name="quantity"
                 label="Number of units"
                 hint={`From 1 to ${MAX_REQUEST_QUANTITY}.`}
+                hintPlacement="below"
                 type="number"
                 inputMode="numeric"
                 min={1}
