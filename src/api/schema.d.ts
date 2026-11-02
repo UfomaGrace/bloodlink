@@ -24,6 +24,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/donors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A voluntary donor creates an account and is signed in
+         * @description Creates a **donor** account and returns a session for it, so the donor goes straight to the donation slots.
+         *     Only donor accounts can be created here: the body has no role or organisation, and a body with any field the
+         *     contract does not list is refused (422). Bank, hospital and administrator accounts are set up by the team.
+         *
+         *     One account per email, compared without regard to case. A repeat with an email already in use answers 409
+         *     `EMAIL_ALREADY_REGISTERED`, so the interface offers sign-in instead. **Client's part:** after a timeout or a
+         *     dropped connection, try signing in with the same email and password before showing an error; if that
+         *     succeeds, the account was created.
+         *
+         *     No email verification or password reset (demonstration product); stated in the README.
+         */
+        post: operations["createDonor"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/organisations": {
         parameters: {
             query?: never;
@@ -564,7 +593,7 @@ export interface components {
              * @description Stable machine-readable code. The interface switches on this, never on `message`.
              * @enum {string}
              */
-            code: "MALFORMED_REQUEST" | "UNAUTHENTICATED" | "INVALID_CREDENTIALS" | "FORBIDDEN" | "NOT_FOUND" | "VALIDATION_FAILED" | "IDEMPOTENCY_KEY_REUSED" | "DUPLICATE_UNIT_REFERENCE" | "UNITS_NO_LONGER_AVAILABLE" | "REQUEST_NOT_PENDING" | "REQUEST_NOT_APPROVED" | "REQUEST_NOT_FULFILLED" | "REQUEST_CLOSED" | "HOLD_NOT_RELEASABLE" | "SLOT_FULL" | "SLOT_CLOSED" | "SLOT_NOT_STARTED" | "ALREADY_BOOKED" | "BOOKING_NOT_ACTIVE" | "INTERNAL_ERROR";
+            code: "MALFORMED_REQUEST" | "UNAUTHENTICATED" | "INVALID_CREDENTIALS" | "FORBIDDEN" | "NOT_FOUND" | "VALIDATION_FAILED" | "IDEMPOTENCY_KEY_REUSED" | "DUPLICATE_UNIT_REFERENCE" | "UNITS_NO_LONGER_AVAILABLE" | "REQUEST_NOT_PENDING" | "REQUEST_NOT_APPROVED" | "REQUEST_NOT_FULFILLED" | "REQUEST_CLOSED" | "HOLD_NOT_RELEASABLE" | "SLOT_FULL" | "SLOT_CLOSED" | "SLOT_NOT_STARTED" | "ALREADY_BOOKED" | "BOOKING_NOT_ACTIVE" | "EMAIL_ALREADY_REGISTERED" | "INTERNAL_ERROR";
             /** @description Plain-language sentence safe to show to the user. */
             message: string;
             /** @description Same value as the X-Request-Id response header. */
@@ -620,6 +649,17 @@ export interface components {
             /** Format: email */
             email: string;
             /** Format: password */
+            password: string;
+        };
+        DonorCreate: {
+            /** Format: email */
+            email: string;
+            /** @description 2 to 120 characters, not counting spaces or control characters at either end. Shown to bank staff on bookings. */
+            displayName: string;
+            /**
+             * Format: password
+             * @description 8 to 72 characters, and at most 72 bytes in UTF-8 (the limit of bcrypt, which stores it).
+             */
             password: string;
         };
         /**
@@ -1326,6 +1366,62 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["InvalidCredentials"];
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createDonor: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description One identifier per user action (a UUID is recommended). Echoed back and logged. */
+                "X-Request-Id"?: components["parameters"]["RequestIdHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "email": "new.donor@example.org",
+                 *       "displayName": "Amaka Obi",
+                 *       "password": "A-good-password-1"
+                 *     }
+                 */
+                "application/json": components["schemas"]["DonorCreate"];
+            };
+        };
+        responses: {
+            /** @description Account created and signed in */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description `EMAIL_ALREADY_REGISTERED`: an account with this email already exists. Offer sign-in. */
+            409: {
+                headers: {
+                    "X-Request-Id": components["headers"]["X-Request-Id"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "EMAIL_ALREADY_REGISTERED",
+                     *       "message": "An account with this email already exists. Sign in instead.",
+                     *       "requestId": "7f9c2b1e-4c1a-4f7e-9d0b-2a6c8e1f3b55",
+                     *       "details": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             422: components["responses"]["ValidationFailed"];
             500: components["responses"]["InternalError"];
         };

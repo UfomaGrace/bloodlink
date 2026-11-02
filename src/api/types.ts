@@ -17,6 +17,7 @@ export type UnitState = S['UnitState'];
 export type RequestState = S['RequestState'];
 export type ReservationStatus = S['ReservationStatus'];
 export type SessionCreate = S['SessionCreate'];
+export type DonorCreate = S['DonorCreate'];
 export type Session = S['Session'];
 export type User = S['User'];
 export type Organisation = S['Organisation'];

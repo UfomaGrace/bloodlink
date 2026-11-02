@@ -15,6 +15,7 @@ import type {
   Dashboard,
   DashboardQuery,
   Declination,
+  DonorCreate,
   DonationSlot,
   DonationSlotCreate,
   DonationSlotList,
@@ -37,6 +38,10 @@ export const api = {
   /** POST /sessions (sign in). */
   createSession: (body: SessionCreate) =>
     apiFetch<Session>('/sessions', { method: 'POST', body, auth: false, mockPreferCode: 201 }),
+
+  /** POST /donors. 409 EMAIL_ALREADY_REGISTERED; after a timeout or lost connection, try createSession instead of resubmitting. */
+  createDonor: (body: DonorCreate) =>
+    apiFetch<Session>('/donors', { method: 'POST', body, auth: false, mockPreferCode: 201 }),
 
   /** GET /actuator/health. Also wakes a sleeping free-tier service before the demo. */
   health: () => apiFetch<{ status: 'UP' | 'DOWN' }>('/actuator/health', { auth: false, timeoutMs: 60_000 }),
