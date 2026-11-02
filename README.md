@@ -11,7 +11,7 @@ BloodLink lets hospitals find and reserve blood units held by blood banks. Bank 
 - Site: https://bloodlink-orpin.vercel.app
 - Service: https://bloodlink-o2ie.onrender.com (source: [Fisayomii/Bloodlink](https://github.com/Fisayomii/Bloodlink))
 
-There is no sign-up, because the API contract only offers `POST /sessions`. Sign in with one of these seeded demo accounts:
+Voluntary donors can create an account from **Giving blood? Create a donor account** on the sign-in page. Bank and hospital staff accounts are set up by the team. Sign in with one of these seeded staff accounts:
 
 | Role           | Email                           | Password          |
 | -------------- | ------------------------------- | ----------------- |

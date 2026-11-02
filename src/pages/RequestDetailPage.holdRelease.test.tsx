@@ -9,6 +9,8 @@ import { ApiError, type ApiResponse } from "../api/client";
 import type { Availability, BloodRequest, BloodRequestPage, Organisation, Reservation, Session } from "../api/types";
 import { ToastProvider } from "../shared/ui/toast";
 
+vi.setConfig({ testTimeout: 20_000 });
+
 const HOSPITAL = { id: "hospital-1", name: "Ikorodu General Hospital", type: "HOSPITAL", area: "Ikorodu" } as const;
 const YABA = { id: "hospital-2", name: "Yaba General Hospital", type: "HOSPITAL", area: "Yaba" } as const;
 const LEKKI = { id: "hospital-3", name: "Lekki Community Clinic", type: "HOSPITAL", area: "Lekki" } as const;

@@ -15,13 +15,13 @@ vi.mock("../auth/AuthContext", () => ({
 
 // IS_MOCK is read from VITE_MOCK when api/client loads, so each test sets the variable and then
 // imports fresh copies of the modules. .env.local may say VITE_MOCK=true; the stub overrides it.
-async function load(mock: "true" | "false") {
+async function load(mock: "true" | "false", initialEntries = ["/login"]) {
   vi.stubEnv("VITE_MOCK", mock);
   vi.resetModules();
   const client = await import("../api/client");
   const { default: LoginPage } = await import("./LoginPage");
   render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={initialEntries}>
       <LoginPage />
     </MemoryRouter>,
   );
@@ -61,6 +61,11 @@ describe("LoginPage demo accounts", () => {
 
     expect(screen.getByLabelText(/Email/)).toHaveProperty("value", "staff@yaba.hospital.demo");
     expect(mocks.createSession).not.toHaveBeenCalled();
+  });
+
+  it("prefills the email passed from donor sign-up", async () => {
+    await load("true", ["/login?email=adaeze%40example.org"]);
+    expect(screen.getByLabelText(/Email/)).toHaveProperty("value", "adaeze@example.org");
   });
 
   it("clears the error box from a failed sign-in", async () => {

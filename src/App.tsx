@@ -17,6 +17,7 @@ const NewSlotPage = lazy(() => import("./pages/NewSlotPage"));
 const RecordUnitPage = lazy(() => import("./pages/RecordUnitPage"));
 const RequestDetailPage = lazy(() => import("./pages/RequestDetailPage"));
 const RequestsPage = lazy(() => import("./pages/RequestsPage"));
+const SignupPage = lazy(() => import("./pages/SignupPage"));
 const SlotDetailPage = lazy(() => import("./pages/SlotDetailPage"));
 const SlotsPage = lazy(() => import("./pages/SlotsPage"));
 const UnitDetailPage = lazy(() => import("./pages/UnitDetailPage"));
@@ -70,6 +71,9 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<PageSuspense />}>
+            <Route index element={<SignupPage />} />
+          </Route>
 
           <Route
             element={
