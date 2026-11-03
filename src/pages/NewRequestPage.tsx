@@ -368,7 +368,7 @@ function RequestForm({
               required
             />
 
-            <div className="grid gap-5 sm:grid-cols-2">
+            <div className="grid items-start gap-5 sm:grid-cols-2">
               <FormikField
                 name="quantity"
                 label="Number of units"
